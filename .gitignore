@@ -1,0 +1,8 @@
+projects/
+.venv/
+__pycache__/
+*.pyc
+*.db
+
+# poznamky k vyvoji, ne do repozitare
+*.log

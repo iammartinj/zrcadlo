@@ -1,0 +1,32 @@
+{
+  "server": {
+    "host": "127.0.0.1",
+    "port": 8420
+  },
+  "lm_studio": {
+    "base_url": "http://127.0.0.1:1234/v1",
+    "model": "gemma-3-12b-it-qat",
+    "context": 8192,
+    "timeout_s": 900
+  },
+  "inference": {
+    "temperature": 0.3,
+    "top_p": 0.9,
+    "repeat_penalty": 1.05,
+    "seed": 606169,
+    "max_tokens": 4096
+  },
+  "batching": {
+    "target_source_tokens": 1200,
+    "chars_per_token": 4.0,
+    "max_segments": 25
+  },
+  "paths": {
+    "projects_dir": "projects"
+  },
+  "glossary": {
+    "chunk_source_tokens": 2500,
+    "terms_per_request": 15,
+    "min_occurrences": 2
+  }
+}

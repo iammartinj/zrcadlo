@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zrcadlo</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="app">
+
+  <header class="bar">
+    <div class="brand">ZRCADLO<span>·</span></div>
+    <div class="bar-right">
+      <span class="chip chip--model" id="modelchip">
+        <span class="dot" id="modeldot"></span>
+        <select id="modelpick" aria-label="Model pro překlad" disabled>
+          <option>—</option>
+        </select>
+      </span>
+      <span class="chip" id="settings" tabindex="0" role="button">Nastavení</span>
+    </div>
+  </header>
+
+  <div class="notice" id="notice" role="status" aria-live="polite"></div>
+
+  <main class="stage">
+
+    <section class="pane pane--src">
+      <div class="pane-head">
+        <span class="pane-lang" id="srclang">ORIGINÁL · EN</span>
+        <span class="pane-meta" id="srcmeta">—</span>
+      </div>
+      <div class="reader" id="src"></div>
+      <div class="pane-foot">
+        <span id="srcfoot">—</span>
+        <div class="pager">
+          <button id="prev" aria-label="Předchozí kapitola" disabled>←</button>
+          <button id="next" aria-label="Další kapitola" disabled>→</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="console">
+      <div class="block">
+        <span class="label">KNIHA</span>
+        <div class="file file--empty" id="drop" tabindex="0" role="button"
+             aria-label="Vybrat soubor EPUB">
+          <div class="name" id="fname">přetáhni sem .epub</div>
+          <div class="sub" id="fsub">nebo klikni a vyber soubor</div>
+        </div>
+        <input type="file" id="picker" accept=".epub,application/epub+zip" hidden>
+        <div class="projlist" id="projlist"></div>
+      </div>
+
+      <div class="block">
+        <span class="label">JAZYK</span>
+        <div class="langs">
+          <select id="lsrc" aria-label="Zdrojový jazyk">
+            <option value="en">angličtina</option>
+            <option value="de">němčina</option>
+            <option value="fr">francouzština</option>
+          </select>
+          <button class="swap" id="swap" aria-label="Prohodit jazyky">⇄</button>
+          <select id="ltgt" aria-label="Cílový jazyk">
+            <option value="cs">čeština</option>
+            <option value="sk">slovenština</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="block">
+        <span class="label">SLOVNÍČEK</span>
+        <div class="gloss-row">
+          <div>
+            <div class="gloss-num"><span id="glosscount">0</span><em>položek</em></div>
+            <div class="gloss-sub" id="glosssub">zatím nesestaven</div>
+          </div>
+          <button class="btn btn--ghost btn--slim" id="glossopen" disabled>Otevřít</button>
+        </div>
+      </div>
+
+      <div class="spine-block">
+        <div class="rail" id="rail" aria-hidden="true"></div>
+        <div class="readout">
+          <div>
+            <div class="pct"><span id="pct">0</span><em>%</em></div>
+            <div class="now-line" id="nowline">připraveno</div>
+          </div>
+          <div class="stats">
+            odstavce <b id="cnt">—</b><br>
+            rychlost <b id="tps">—</b><br>
+            zbývá <b id="eta">—</b>
+          </div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="btn" id="go" disabled>PŘELOŽIT</button>
+        <button class="btn btn--ghost" id="exp" disabled>Uložit překlad</button>
+        <div class="exports" id="exports" hidden>
+          <button class="btn btn--ghost btn--slim" data-kind="translation">EPUB · jen překlad</button>
+          <button class="btn btn--ghost btn--slim" data-kind="mirror">EPUB · zrcadlově</button>
+          <button class="btn btn--ghost btn--slim" data-kind="markdown">Markdown</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="pane pane--tgt">
+      <div class="pane-head">
+        <span class="pane-lang" id="tgtlang">PŘEKLAD · CS</span>
+        <span class="pane-meta" id="tgtmeta">čeká na spuštění</span>
+      </div>
+      <div class="reader" id="tgt"></div>
+      <div class="pane-foot">
+        <span id="tgtfoot">—</span>
+        <span>lokálně · offline</span>
+      </div>
+
+      <aside class="gloss" id="hist" aria-label="Historie běhů">
+        <div class="gloss-head">
+          <span class="gloss-title">HISTORIE BĚHŮ</span>
+          <button class="gloss-close" id="histclose" aria-label="Zavřít historii">✕</button>
+        </div>
+        <div class="gloss-body" id="histbody"></div>
+      </aside>
+
+      <aside class="gloss" id="gloss" aria-label="Slovníček projektu">
+        <div class="gloss-head">
+          <span class="gloss-title">SLOVNÍČEK</span>
+          <button class="gloss-close" id="glossclose" aria-label="Zavřít slovníček">✕</button>
+        </div>
+
+        <div class="gloss-bar">
+          <span id="glossstat">—</span>
+          <span class="sep"></span>
+          <button class="btn btn--ghost btn--slim" id="glosslockall">Potvrdit vše</button>
+        </div>
+
+        <div class="gloss-offer" id="glossoffer" role="status"></div>
+
+        <div class="gloss-body" id="glossbody"></div>
+
+        <div class="gloss-foot">
+          <button class="btn" id="glossbuild">SESTAVIT SLOVNÍČEK</button>
+        </div>
+      </aside>
+    </section>
+
+  </main>
+
+  <footer class="status">
+    <span id="st-gpu" hidden></span>
+    <span id="st-ctx">kontext —</span>
+    <button class="st-link" id="histopen" disabled>historie běhů</button>
+    <span class="sep"></span>
+    <span>text neopouští tento počítač</span>
+  </footer>
+</div>
+
+<dialog class="card" id="stylecard" aria-label="Stylová karta projektu">
+  <form method="dialog" class="card-form" id="styleform">
+    <div class="card-head">
+      <span class="gloss-title">STYLOVÁ KARTA</span>
+      <button class="gloss-close" value="cancel" aria-label="Zavřít">✕</button>
+    </div>
+
+    <div class="card-body">
+      <p class="card-note">Tyhle údaje jdou do systémového promptu každé dávky.
+        Změna se projeví na tom, co se přeloží od teď, hotové odstavce nemění.</p>
+
+      <label class="field">
+        <span class="label">REGISTR</span>
+        <select id="f-register">
+          <option value="neutralni">neutrální, spisovný</option>
+          <option value="hovorovy">hovorový, blízký mluvené češtině</option>
+          <option value="archaizujici">archaizující</option>
+        </select>
+      </label>
+
+      <label class="field">
+        <span class="label">ROD VYPRAVĚČE</span>
+        <select id="f-narrator">
+          <option value="neurceno">neurčeno</option>
+          <option value="muz">mužský</option>
+          <option value="zena">ženský</option>
+        </select>
+      </label>
+
+      <label class="field">
+        <span class="label">MEZI POSTAVAMI</span>
+        <select id="f-address">
+          <option value="neurceno">neurčeno</option>
+          <option value="tykani">tykání</option>
+          <option value="vykani">vykání</option>
+        </select>
+      </label>
+
+      <label class="field field--check">
+        <input type="checkbox" id="f-feminize">
+        <span>přechylovat ženská příjmení (Smith → Smithová)</span>
+      </label>
+
+      <label class="field">
+        <span class="label">POZNÁMKA PRO PŘEKLADATELE</span>
+        <textarea id="f-note" rows="4" placeholder="volný text, jde do promptu tak, jak ho napíšeš"></textarea>
+      </label>
+    </div>
+
+    <div class="card-foot">
+      <button class="btn btn--ghost btn--slim" value="cancel" type="submit">Zrušit</button>
+      <button class="btn btn--slim" id="stylesave" type="button">Uložit</button>
+    </div>
+  </form>
+</dialog>
+<script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zrcadlo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#E7E9E6;
+  --panel:#F6F7F5;
+  --ink:#191C1A;
+  --muted:#767C78;
+  --rule:#CFD3CF;
+  --accent:#35507E;
+  --accent-ink:#243A5E;
+  --accent-soft:rgba(53,80,126,.10);
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --step:1.7;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--paper);
+  color:var(--ink);
+  font-family:var(--mono);
+  font-size:13px;
+  font-weight:400;
+  -webkit-font-smoothing:antialiased;
+}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.app{height:100vh;display:flex;flex-direction:column}
+
+/* ---------- top bar ---------- */
+.bar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 18px;height:46px;
+  border-bottom:1px solid var(--rule);
+  background:var(--panel);
+}
+.brand{font-weight:700;letter-spacing:.34em;font-size:12px}
+.brand span{color:var(--accent);font-weight:400}
+.bar-right{display:flex;align-items:center;gap:14px;color:var(--muted);font-size:11px}
+.chip{
+  border:1px solid var(--rule);border-radius:2px;
+  padding:4px 9px;background:var(--paper);
+  letter-spacing:.02em;
+}
+.dot{width:5px;height:5px;border-radius:50%;background:var(--accent);display:inline-block;margin-right:7px;vertical-align:1px}
+
+/* ---------- stage ---------- */
+.stage{
+  flex:1;display:grid;grid-template-columns:1fr 296px 1fr;
+  min-height:0;
+}
+.pane{display:flex;flex-direction:column;min-height:0;background:var(--panel)}
+.pane--tgt{background:var(--panel)}
+.pane-head{
+  display:flex;align-items:baseline;justify-content:space-between;
+  padding:13px 26px;border-bottom:1px solid var(--rule);
+}
+.pane-lang{font-size:11px;letter-spacing:.24em;font-weight:500}
+.pane--tgt .pane-lang{color:var(--accent)}
+.pane-meta{font-size:10px;color:var(--muted);letter-spacing:.08em}
+.reader{
+  overflow-y:auto;padding:34px 26px 60px;
+  line-height:var(--step);
+  font-size:13px;
+  scrollbar-width:thin;
+}
+.reader p{margin-bottom:1.5em;max-width:52ch}
+.reader p.head{font-weight:700;letter-spacing:.04em;margin-bottom:2em}
+.pane--tgt .reader{color:var(--accent-ink)}
+.pane--tgt .reader p{opacity:0;transform:translateY(3px);transition:opacity .5s ease,transform .5s ease}
+.pane--tgt .reader p.on{opacity:1;transform:none}
+.pane-foot{
+  border-top:1px solid var(--rule);padding:9px 26px;
+  display:flex;justify-content:space-between;align-items:center;
+  font-size:10px;color:var(--muted);letter-spacing:.08em;
+}
+.pager{display:flex;gap:10px;align-items:center}
+.pager button{
+  font:inherit;font-size:11px;background:none;border:none;color:var(--muted);
+  cursor:pointer;padding:2px 4px;border-radius:2px;
+}
+.pager button:hover{color:var(--ink)}
+
+/* ---------- console ---------- */
+.console{
+  border-left:1px solid var(--rule);border-right:1px solid var(--rule);
+  background:var(--paper);
+  display:flex;flex-direction:column;min-height:0;
+}
+.block{padding:18px 20px;border-bottom:1px solid var(--rule)}
+.label{
+  font-size:10px;letter-spacing:.2em;color:var(--muted);
+  display:block;margin-bottom:10px;
+}
+.file{
+  border:1px dashed var(--rule);border-radius:2px;background:var(--panel);
+  padding:14px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s;
+}
+.file:hover{border-color:var(--accent);background:var(--accent-soft)}
+.file .name{font-size:12px;font-weight:500;word-break:break-all}
+.file .sub{font-size:10px;color:var(--muted);margin-top:5px;letter-spacing:.06em}
+
+.langs{display:grid;grid-template-columns:1fr 30px 1fr;gap:6px;align-items:center}
+select{
+  font:inherit;font-size:12px;width:100%;
+  background:var(--panel);border:1px solid var(--rule);border-radius:2px;
+  padding:8px 9px;color:var(--ink);cursor:pointer;
+  -webkit-appearance:none;appearance:none;
+}
+select:hover{border-color:var(--muted)}
+.swap{
+  font:inherit;font-size:13px;background:none;border:none;color:var(--muted);
+  cursor:pointer;padding:6px 0;border-radius:2px;
+}
+.swap:hover{color:var(--accent)}
+
+/* ---------- the spine ---------- */
+.spine-block{flex:1;display:flex;gap:16px;padding:20px;min-height:0;border-bottom:1px solid var(--rule)}
+.rail{width:11px;flex:none;display:flex;flex-direction:column;gap:2px;padding-top:2px}
+.tick{flex:1;background:var(--rule);border-radius:1px;transition:background .35s ease}
+.tick.done{background:var(--accent)}
+.tick.now{background:var(--accent);animation:pulse 1.1s ease-in-out infinite}
+.tick.chap{background:var(--muted)}
+.tick.chap.done{background:var(--accent-ink)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.28}}
+.readout{display:flex;flex-direction:column;justify-content:space-between;padding:2px 0}
+.pct{font-size:30px;font-weight:300;letter-spacing:-.04em;line-height:1}
+.pct em{font-style:normal;font-size:13px;color:var(--muted);margin-left:3px}
+.stats{font-size:10px;color:var(--muted);line-height:1.9;letter-spacing:.05em}
+.stats b{font-weight:500;color:var(--ink)}
+.now-line{font-size:10px;color:var(--accent);letter-spacing:.06em}
+
+.actions{padding:18px 20px;display:grid;gap:8px}
+.btn{
+  font:inherit;font-size:12px;font-weight:500;letter-spacing:.14em;
+  padding:12px;border-radius:2px;cursor:pointer;border:1px solid var(--accent);
+  background:var(--accent);color:var(--panel);transition:background .2s,color .2s;
+}
+.btn:hover{background:var(--accent-ink);border-color:var(--accent-ink)}
+.btn--ghost{background:none;color:var(--muted);border-color:var(--rule)}
+.btn--ghost:hover{background:var(--panel);color:var(--ink);border-color:var(--muted)}
+
+/* ---------- status ---------- */
+.status{
+  height:28px;border-top:1px solid var(--rule);background:var(--panel);
+  display:flex;align-items:center;gap:22px;padding:0 18px;
+  font-size:10px;color:var(--muted);letter-spacing:.08em;
+}
+.status .sep{flex:1}
+
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important}
+  .pane--tgt .reader p{opacity:1;transform:none}
+}
+@media (max-width:900px){
+  .app{height:auto}
+  .stage{grid-template-columns:1fr}
+  .console{order:-1;border-left:none;border-right:none;border-bottom:1px solid var(--rule)}
+  .spine-block{min-height:150px}
+  .reader{max-height:46vh}
+  .pane--src{border-bottom:1px solid var(--rule)}
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="bar">
+    <div class="brand">ZRCADLO<span>·</span></div>
+    <div class="bar-right">
+      <span class="chip"><span class="dot"></span>gemma-3-12b-it · q4_0</span>
+      <span class="chip">Nastavení</span>
+    </div>
+  </header>
+
+  <main class="stage">
+
+    <section class="pane pane--src">
+      <div class="pane-head">
+        <span class="pane-lang">ORIGINÁL · EN</span>
+        <span class="pane-meta">kapitola 1</span>
+      </div>
+      <div class="reader" id="src"></div>
+      <div class="pane-foot">
+        <span>strana 14 / 312</span>
+        <div class="pager">
+          <button aria-label="Předchozí strana">←</button>
+          <button aria-label="Další strana">→</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="console">
+      <div class="block">
+        <span class="label">KNIHA</span>
+        <div class="file" tabindex="0" role="button">
+          <div class="name">moje-kniha.epub</div>
+          <div class="sub">312 stran · 1 480 odstavců</div>
+        </div>
+      </div>
+
+      <div class="block">
+        <span class="label">JAZYK</span>
+        <div class="langs">
+          <select aria-label="Zdrojový jazyk">
+            <option>angličtina</option>
+            <option>němčina</option>
+            <option>francouzština</option>
+          </select>
+          <button class="swap" aria-label="Prohodit jazyky">⇄</button>
+          <select aria-label="Cílový jazyk">
+            <option>čeština</option>
+            <option>slovenština</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="spine-block">
+        <div class="rail" id="rail" aria-hidden="true"></div>
+        <div class="readout">
+          <div>
+            <div class="pct"><span id="pct">0</span><em>%</em></div>
+            <div class="now-line" id="nowline">připraveno</div>
+          </div>
+          <div class="stats">
+            odstavce <b id="cnt">0 / 1 480</b><br>
+            rychlost <b id="tps">—</b><br>
+            zbývá <b id="eta">—</b>
+          </div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="btn" id="go">PŘELOŽIT</button>
+        <button class="btn btn--ghost" id="exp">Uložit jako .epub</button>
+      </div>
+    </section>
+
+    <section class="pane pane--tgt">
+      <div class="pane-head">
+        <span class="pane-lang">PŘEKLAD · CS</span>
+        <span class="pane-meta" id="tgtmeta">čeká na spuštění</span>
+      </div>
+      <div class="reader" id="tgt"></div>
+      <div class="pane-foot">
+        <span id="tgtfoot">—</span>
+        <span>lokálně · offline</span>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="status">
+    <span>GPU 11 264 MB · využito 8 140 MB</span>
+    <span>kontext 8192</span>
+    <span class="sep"></span>
+    <span>text neopouští tento počítač</span>
+  </footer>
+</div>
+
+<script>
+const SRC = [
+  {h:1,t:"The Keeper of Sable Point"},
+  {t:"The lamp went out on the third night of the storm, and with it went the only argument the island had ever made against the sea."},
+  {t:"Mara had trimmed that wick for eleven winters. She knew the weight of the oil can, the exact protest of the third stair, the way the glass fogged when the wind came from the northeast and not from anywhere else."},
+  {t:"Her father had told her that a keeper is not paid to shine a light. A keeper is paid to be awake. The distinction had seemed like wordplay when she was nine. It did not seem like wordplay now."},
+  {t:"Below the gallery the water moved in long grey slabs, and somewhere out in it a bell was ringing that belonged to no buoy she could name."}
+];
+const TGT = [
+  {h:1,t:"Strážkyně Sobolího mysu"},
+  {t:"Lampa zhasla třetí noc bouře a s ní zhasl i jediný důvod, který kdy ostrov postavil proti moři."},
+  {t:"Mara zastřihovala ten knot jedenáct zim. Znala váhu kanystru s olejem, přesnou stížnost třetího schodu i to, jak se sklo zamlžuje, když vítr přijde od severovýchodu a odnikud jinud."},
+  {t:"Otec jí říkal, že strážce není placený za to, aby svítil. Strážce je placený za to, aby bděl. V devíti letech jí to připadalo jako slovní hříčka. Teď už jí to tak nepřipadalo."},
+  {t:"Pod ochozem se voda převalovala v dlouhých šedých deskách a kdesi v ní zvonil zvon, který nepatřil žádné bóji, kterou by uměla pojmenovat."}
+];
+
+const src=document.getElementById('src'), tgt=document.getElementById('tgt');
+SRC.forEach(p=>{const el=document.createElement('p');if(p.h)el.className='head';el.textContent=p.t;src.appendChild(el)});
+TGT.forEach(p=>{const el=document.createElement('p');if(p.h)el.className='head';el.textContent=p.t;tgt.appendChild(el)});
+
+const rail=document.getElementById('rail'), TICKS=48;
+for(let i=0;i<TICKS;i++){
+  const d=document.createElement('div');
+  d.className = i%12===0 ? 'tick chap' : 'tick';
+  rail.appendChild(d);
+}
+const ticks=[...rail.children];
+
+const TOTAL=1480, go=document.getElementById('go');
+let timer=null, done=0;
+
+function paint(){
+  const r=done/TOTAL;
+  document.getElementById('pct').textContent=Math.round(r*100);
+  document.getElementById('cnt').textContent=done.toLocaleString('cs')+' / 1 480';
+  const cut=Math.floor(r*TICKS);
+  ticks.forEach((t,i)=>{t.classList.toggle('done',i<cut);t.classList.toggle('now',i===cut)});
+  const paras=[...tgt.children], show=Math.min(paras.length,Math.ceil(r*paras.length*14));
+  paras.forEach((p,i)=>p.classList.toggle('on',i<show));
+}
+
+go.addEventListener('click',()=>{
+  if(timer){clearInterval(timer);timer=null;go.textContent='POKRAČOVAT';document.getElementById('nowline').textContent='pozastaveno';return}
+  go.textContent='POZASTAVIT';
+  document.getElementById('tgtmeta').textContent='kapitola 1';
+  document.getElementById('tgtfoot').textContent='strana 14 / 312';
+  timer=setInterval(()=>{
+    done=Math.min(TOTAL,done+7);
+    document.getElementById('nowline').textContent='překládá se odstavec '+done;
+    document.getElementById('tps').textContent='31 tok/s';
+    const left=Math.round((TOTAL-done)/7*0.09/60);
+    document.getElementById('eta').textContent=left>0?left+' min':'< 1 min';
+    paint();
+    if(done>=TOTAL){clearInterval(timer);timer=null;go.textContent='HOTOVO';document.getElementById('nowline').textContent='přeloženo celé';}
+  },90);
+});
+paint();
+</script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+# jednotne konce radku napric stroji
+* text=auto eol=lf
+*.bat text eol=crlf
+*.woff2 binary
+*.epub binary
