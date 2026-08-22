@@ -133,8 +133,7 @@ kapitolu**, otevřete zrcadlový export a porovnejte. Přepnutí modelu je otáz
 jednoho kliknutí, takže je to levnější než hádat.
 
 Pozor ještě na jednu věc: **zavři před překladem programy, které berou paměť
-grafické karty.** Při vývoji se ukázalo, že běžící 3ds Max srazil rychlost
-z 16 na 7 tokenů za sekundu.
+grafické karty.**
 
 ---
 
