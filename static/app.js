@@ -292,8 +292,12 @@ function renderChapter(chap, segs) {
     }
     if (seg.status === "review" || seg.status === "failed") {
       b.title = seg.review_note || "Odstavec neprošel kontrolou.";
-      b.addEventListener("click", () => segmentAction(b, seg));
+    } else if (seg.status === "skipped") {
+      b.title = "Vyřazeno z knihy: " + (seg.review_note || "ručně");
+    } else {
+      b.title = "Klikni a můžeš překlad upravit.";
     }
+    b.addEventListener("click", () => segmentAction(b, seg));
     tgt.appendChild(b);
   });
 
@@ -308,55 +312,120 @@ function renderChapter(chap, segs) {
   paintChapterFoot();
 }
 
-/* Odstavec, ktery neprosel kontrolou. Prelozeny text zustava, jen se nabidne
-   preklad znovu. Nic se nepřepisuje bez toho, aby o to uzivatel rekl. */
+/* Ruční úprava odstavce. Otevře se kliknutím v pravém sloupci: text jde
+   opravit, nechat přeložit znovu, nebo odstavec vyřadit z knihy. Nic se
+   nemění bez toho, aby uživatel klikl. */
 function segmentAction(paragraph, seg) {
   const existing = $("tgt").querySelector(".seg-action");
   const same = existing && existing.dataset.ord === String(seg.ord);
-  if (existing) existing.remove();
+  if (existing) {
+    existing.previousElementSibling?.classList.remove("editing");
+    existing.remove();
+  }
   if (same) return;
 
   const box = document.createElement("div");
   box.className = "seg-action";
   box.dataset.ord = seg.ord;
+  paragraph.classList.add("editing");
 
-  const why = document.createElement("span");
-  why.className = "why";
-  const label = document.createElement("b");
-  label.textContent = seg.status === "failed"
-    ? "Překlad se nepodařil. " : "Neprošlo kontrolou: ";
-  why.append(label, document.createTextNode(seg.review_note || "důvod se neuložil"));
+  if (seg.review_note) {
+    const why = document.createElement("span");
+    why.className = "why";
+    const label = document.createElement("b");
+    label.textContent = seg.status === "failed" ? "Překlad se nepodařil. "
+      : seg.status === "skipped" ? "Vyřazeno z knihy: " : "Neprošlo kontrolou: ";
+    why.append(label, document.createTextNode(seg.review_note));
+    box.appendChild(why);
+  }
 
-  const again = document.createElement("button");
-  again.textContent = "Přeložit znovu";
-  again.addEventListener("click", async (e) => {
-    e.stopPropagation();
-    again.disabled = true;
-    again.textContent = "překládám…";
+  const pole = document.createElement("textarea");
+  pole.rows = Math.min(10, Math.max(2, Math.ceil((seg.tgt_text || "").length / 60)));
+  pole.value = seg.tgt_html || seg.tgt_text || "";
+  pole.spellcheck = true;
+  box.appendChild(pole);
+
+  const zavri = () => { paragraph.classList.remove("editing"); box.remove(); };
+
+  const ulozit = tlacitko("Uložit", async () => {
+    const seg2 = await patchSegment(seg, { tgt_html: pole.value });
+    if (seg2) { zavri(); }
+  });
+
+  const znovu = tlacitko("Přeložit znovu", async () => {
+    znovu.disabled = true;
+    znovu.textContent = "překládám…";
     try {
       await api("/api/projects/" + encodeURIComponent(state.slug) +
                 "/segments/" + seg.ord + "/retranslate", { method: "POST" });
     } catch (err) {
       notice("bad", "Odstavec se nepodařilo znovu přeložit.", err.message);
-      box.remove();
+      zavri();
       return;
     }
-    box.remove();
+    zavri();
     state.running = true;
     state.runKind = "translate";
     state.live = { tps: null, eta: null, note: "překládám odstavec znovu" };
     updateGo();
     paint();
     followRun();
-  });
+  }, true);
 
-  const keep = document.createElement("button");
-  keep.className = "ghost";
-  keep.textContent = "Nechat";
-  keep.addEventListener("click", (e) => { e.stopPropagation(); box.remove(); });
+  const vyradit = tlacitko(
+    seg.status === "skipped" ? "Vrátit do knihy" : "Vyřadit z knihy",
+    async () => {
+      const novy = seg.status === "skipped"
+        ? (seg.tgt_text ? "done" : "pending") : "skipped";
+      const seg2 = await patchSegment(seg, { status: novy });
+      if (seg2) zavri();
+    }, true);
 
-  box.append(why, again, keep);
+  const zrusit = tlacitko("Zavřít", zavri, true);
+
+  box.append(ulozit, znovu, vyradit, zrusit);
+  const napoveda = document.createElement("span");
+  napoveda.className = "hint2";
+  napoveda.textContent = "Kurzívu piš jako <em>text</em>, tučné jako <strong>text</strong>. "
+    + "Vyřazený odstavec se nepřekládá ani nedostane do exportu, ale zůstane v databázi.";
+  box.appendChild(napoveda);
+
   paragraph.after(box);
+  pole.focus();
+}
+
+function tlacitko(popisek, akce, ghost) {
+  const b = document.createElement("button");
+  if (ghost) b.className = "ghost";
+  b.textContent = popisek;
+  b.addEventListener("click", (e) => { e.stopPropagation(); akce(); });
+  return b;
+}
+
+async function patchSegment(seg, fields) {
+  try {
+    const res = await api("/api/projects/" + encodeURIComponent(state.slug) +
+                          "/segments/" + seg.ord,
+      { method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(fields) });
+    const novy = res.segment;
+    const mistni = state.segments.find((x) => x.ord === seg.ord);
+    if (mistni) Object.assign(mistni, novy);
+    const p = $("tgt").querySelector('p[data-ord="' + seg.ord + '"]');
+    if (p) {
+      p.innerHTML = novy.tgt_html || novy.tgt_text || "";
+      p.dataset.status = novy.status;
+      p.classList.add("on");
+    }
+    await refreshBook();
+    paintChapterFoot();
+    paint();
+    updateGo();
+    return novy;
+  } catch (e) {
+    notice("bad", "Změnu se nepodařilo uložit.", e.message);
+    return null;
+  }
 }
 
 function paintChapterFoot() {
@@ -423,7 +492,8 @@ function buildRail(total, chapters) {
 
 function paint() {
   const book = state.book;
-  const total = book ? book.total : 0;
+  // vyrazene odstavce se neprekladaji, do jmenovatele tedy nepatri
+  const total = book ? (book.total || 0) - (book.skipped || 0) : 0;
   const done = book ? book.done : 0;
   const r = total ? done / total : 0;
   $("pct").textContent = Math.round(r * 100);
@@ -435,6 +505,10 @@ function paint() {
     t.classList.toggle("done", i < cut);
     t.classList.toggle("now", state.running && i === cut);
   });
+  const vyrazeno = book && book.skipped
+    ? " · " + num(book.skipped) + " vyřazeno" : "";
+  $("cnt").textContent = total
+    ? num(done) + " / " + num(total) + vyrazeno : "—";
   $("nowline").textContent = nowLine();
 }
 
@@ -442,8 +516,9 @@ function nowLine() {
   const book = state.book;
   if (!book) return "připraveno";
   if (state.running) return state.live.note || "překládá se";
+  const cil = (book.total || 0) - (book.skipped || 0);
   if (book.done === 0) return "kniha načtena, překlad nespuštěn";
-  if (book.done >= book.total) return "přeloženo celé";
+  if (book.done >= cil) return "přeloženo celé";
   return "hotovo " + num(book.done) + " odstavců";
 }
 
@@ -480,7 +555,8 @@ function updateGo() {
 function bookPending() {
   const b = state.book;
   if (!b) return 0;
-  return Math.max(0, (b.total || 0) - (b.done || 0) - (b.review || 0));
+  return Math.max(0, (b.total || 0) - (b.done || 0) - (b.review || 0)
+                     - (b.skipped || 0));
 }
 
 /* ---------------- preklad ---------------- */
@@ -1087,6 +1163,69 @@ function resumeNotice(book) {
   }
 }
 
+/* ---------------- cisteni tiskoveho balastu ---------------- */
+
+async function runCleanup() {
+  const btn = $("clean");
+  btn.disabled = true;
+  const label = btn.textContent;
+  btn.textContent = "hledám…";
+  let found;
+  try {
+    found = await api("/api/projects/" + encodeURIComponent(state.slug) + "/cleanup");
+  } catch (e) {
+    notice("bad", "Hledání se nepodařilo.", e.message);
+    btn.disabled = false; btn.textContent = label;
+    return;
+  }
+  btn.disabled = false;
+  btn.textContent = label;
+
+  if (!found.found) {
+    notice("ok", "Žádný tiskový balast jsem nenašel.",
+      "Zdrojový EPUB vypadá čistě. Jednotlivé odstavce jde pořád vyřadit ručně kliknutím v pravém sloupci.");
+    return;
+  }
+
+  const box = $("glossoffer");
+  box.innerHTML = "";
+  const text = document.createElement("div");
+  const soucet = Object.entries(found.summary)
+    .sort((a, b) => b[1] - a[1])
+    .map(([d, n]) => n + "× " + d).join(", ");
+  text.textContent = "Našel jsem " +
+    withNum(found.found, "odstavec", "odstavce", "odstavců") +
+    ", které vypadají jako tiskové příslušenství, ne jako text knihy: " +
+    soucet + ". Vyřadit je z knihy?";
+  const row = document.createElement("div");
+  row.className = "row";
+  const yes = document.createElement("button");
+  yes.className = "yes";
+  yes.textContent = "Vyřadit";
+  yes.addEventListener("click", async () => {
+    try {
+      const res = await api("/api/projects/" + encodeURIComponent(state.slug) +
+                            "/cleanup", { method: "POST" });
+      box.classList.remove("on");
+      notice("ok", "Vyřazeno " +
+        withNum(res.skipped, "odstavec", "odstavce", "odstavců") + ".",
+        "Nic se nesmazalo, jen se to nebude překládat ani exportovat. V pravém sloupci jsou přeškrtnuté a kliknutím je vrátíš.");
+      await refreshBook();
+      await showChapter(state.chapter);
+      paint();
+    } catch (e) {
+      notice("bad", "Vyřazení se nepodařilo.", e.message);
+    }
+  });
+  const no = document.createElement("button");
+  no.textContent = "Nechat být";
+  no.addEventListener("click", () => box.classList.remove("on"));
+  row.append(yes, no);
+  box.append(text, row);
+  box.classList.add("on");
+  glossOpen(true);
+}
+
 /* ---------------- export ---------------- */
 
 const EXPORT_NAMES = {
@@ -1132,6 +1271,7 @@ async function runExport(kind, button) {
 function updateExportButtons() {
   const has = !!state.book;
   $("exp").disabled = !has;
+  $("clean").disabled = !has;
   if (!has) $("exports").hidden = true;
 }
 
@@ -1204,6 +1344,8 @@ function wire() {
     notice("warn", "Prohození jazyků zatím nic nemění.",
       "Směr překladu se bere z projektu, angličtina do češtiny.");
   });
+
+  $("clean").addEventListener("click", runCleanup);
 
   $("exp").addEventListener("click", () => {
     const box = $("exports");

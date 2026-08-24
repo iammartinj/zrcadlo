@@ -35,11 +35,11 @@ WS = re.compile(r"\s+")
 # XHTML se schvalne cte HTML parserem, upozorneni na to je jen sum
 warnings.filterwarnings("ignore", category=UserWarning, module="ebooklib")
 warnings.filterwarnings("ignore", category=FutureWarning, module="ebooklib")
-try:
-    from bs4 import XMLParsedAsHTMLWarning
-    warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
-except ImportError:
-    pass
+for _jmeno in ("XMLParsedAsHTMLWarning", "MarkupResemblesLocatorWarning"):
+    try:
+        warnings.filterwarnings("ignore", category=getattr(__import__("bs4"), _jmeno))
+    except AttributeError:
+        pass
 
 
 def _hash(text: str) -> str:

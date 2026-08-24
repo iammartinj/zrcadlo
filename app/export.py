@@ -179,7 +179,8 @@ def build_epub(slug, mirror, out_path):
         for chap in chapters:
             segs = [dict(r) for r in con.execute(
                 "SELECT ord, kind, level, src_html, tgt_html, note_id, note_txt"
-                " FROM segment WHERE chapter = ? ORDER BY ord", (chap["ord"],))]
+                " FROM segment WHERE chapter = ? AND status != 'skipped'"
+                " ORDER BY ord", (chap["ord"],))]
             html, count, missing = _chapter_html(segs, mirror)
             total_paragraphs += count
             total_missing += missing
@@ -264,7 +265,8 @@ def build_markdown(slug, out_path):
         for chap in chapters:
             segs = [dict(r) for r in con.execute(
                 "SELECT ord, kind, level, src_html, tgt_html, note_id, note_txt"
-                " FROM segment WHERE chapter = ? ORDER BY ord", (chap["ord"],))]
+                " FROM segment WHERE chapter = ? AND status != 'skipped'"
+                " ORDER BY ord", (chap["ord"],))]
             notes = []
             lines.append("")
             for seg in segs:
@@ -321,7 +323,9 @@ def run(slug, kind):
 
     con = projects.open_db(slug)
     try:
-        source_total = con.execute("SELECT COUNT(*) FROM segment").fetchone()[0]
+        source_total = con.execute(
+            "SELECT COUNT(*) FROM segment WHERE status != 'skipped'"
+        ).fetchone()[0]
         started = datetime.now().isoformat(timespec="seconds")
         con.execute(
             "INSERT INTO run (kind, started_at, finished_at, segments_done, status)"

@@ -99,7 +99,8 @@ def counts(con):
         "SELECT COUNT(*) AS total,"
         " SUM(status='done') AS done,"
         " SUM(status='review') AS review,"
-        " SUM(status='failed') AS failed"
+        " SUM(status='failed') AS failed,"
+        " SUM(status='skipped') AS skipped"
         " FROM segment").fetchone()
     gl = con.execute(
         "SELECT COUNT(*) AS total, SUM(locked=0) AS unlocked FROM glossary"
@@ -109,6 +110,7 @@ def counts(con):
         "done": row["done"] or 0,
         "review": row["review"] or 0,
         "failed": row["failed"] or 0,
+        "skipped": row["skipped"] or 0,
         "glossary_total": gl["total"] or 0,
         "glossary_unconfirmed": gl["unlocked"] or 0,
     }
@@ -303,6 +305,51 @@ def relabel_chapters(slug):
         if zmeny:
             con.commit()
         return zmeny
+    finally:
+        con.close()
+
+
+SEGMENT_STATUSES = {"pending", "done", "review", "failed", "skipped"}
+
+
+def update_segment(slug, ord_, fields):
+    """Rucni uprava jednoho odstavce: text prekladu nebo stav.
+
+    Rucne upraveny preklad dostane stav 'done' a vyhrada z kontroly zmizi,
+    protoze o nem ted rozhodl clovek.
+    """
+    from . import prompt
+    con = open_db(slug)
+    if con is None:
+        return None
+    try:
+        row = con.execute("SELECT id, src_html FROM segment WHERE ord = ?",
+                          (ord_,)).fetchone()
+        if row is None:
+            return None
+        sets, args = [], []
+        if "tgt_html" in fields:
+            html = prompt.sanitize(str(fields["tgt_html"]))
+            sets += ["tgt_html = ?", "tgt_text = ?", "status = ?",
+                     "review_note = NULL"]
+            args += [html, prompt.plain(html), "done" if html.strip() else "pending"]
+        if "status" in fields:
+            stav = str(fields["status"]).strip().lower()
+            if stav in SEGMENT_STATUSES:
+                sets.append("status = ?")
+                args.append(stav)
+                if stav != "skipped":
+                    sets.append("review_note = NULL")
+        if not sets:
+            return None
+        args.append(row["id"])
+        con.execute("UPDATE segment SET " + ", ".join(sets) + " WHERE id = ?", args)
+        con.commit()
+        out = con.execute(
+            "SELECT ord, chapter, kind, level, src_text, src_html, tgt_text,"
+            " tgt_html, status, review_note FROM segment WHERE id = ?",
+            (row["id"],)).fetchone()
+        return dict(out)
     finally:
         con.close()
 

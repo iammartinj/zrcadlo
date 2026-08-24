@@ -319,6 +319,24 @@ dialog.card select{background:var(--paper)}
 .exports{display:grid;gap:5px;padding-top:2px}
 .exports .btn{text-align:left;padding-left:14px}
 
+/* rucne upravovany odstavec */
+.reader p.editing{
+  outline:1px solid var(--accent);outline-offset:3px;background:var(--panel);
+}
+.reader p[data-status="skipped"]{
+  opacity:.4;font-size:11px;text-decoration:line-through;
+}
+.pane--src .reader p[data-status="skipped"]{text-decoration:none}
+.seg-action textarea{
+  font:inherit;font-size:12px;width:100%;max-width:52ch;resize:vertical;
+  background:var(--panel);border:1px solid var(--rule);border-radius:2px;
+  padding:7px 8px;color:var(--accent-ink);line-height:1.6;margin-bottom:7px;
+}
+.seg-action textarea:focus{border-color:var(--accent);outline:none}
+.seg-action .hint2{
+  display:block;margin-top:6px;color:var(--rule);font-size:9px;letter-spacing:.06em;
+}
+
 /* nabidka u segmentu, ktery neprosel kontrolou */
 .seg-action{
   margin:-1em 0 1.6em 12px;max-width:52ch;

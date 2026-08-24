@@ -11,7 +11,7 @@ from fastapi import FastAPI, HTTPException, Request, UploadFile, File
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import export, glossary, projects, runner, sysinfo, translate
+from . import cleanup, export, glossary, projects, runner, sysinfo, translate
 from . import config
 from .config import CFG, ROOT
 
@@ -214,6 +214,47 @@ def api_recheck(slug: str, chapter: int = None):
     if runner.active(slug) is not None:
         raise HTTPException(409, "Na projektu právě běží jiná práce.")
     result = translate.recheck(slug, chapter)
+    if result is None:
+        raise HTTPException(404, "Projekt nenalezen.")
+    return result
+
+
+@app.patch("/api/projects/{slug}/segments/{ord}")
+async def api_segment_edit(slug: str, ord: int, request: Request):
+    """Rucni uprava odstavce: opravit preklad, nebo ho vyradit z knihy."""
+    fields = await request.json()
+    if not isinstance(fields, dict):
+        raise HTTPException(400, "Čekám objekt se změněnými poli.")
+    seg = projects.update_segment(slug, ord, fields)
+    if seg is None:
+        raise HTTPException(404, "Takový odstavec v knize není.")
+    return {"segment": seg}
+
+
+@app.get("/api/projects/{slug}/cleanup")
+def api_cleanup_scan(slug: str):
+    """Najde tiskovy balast, ale nic nezmeni."""
+    found = cleanup.scan(slug)
+    if found is None:
+        raise HTTPException(404, "Projekt nenalezen.")
+    return found
+
+
+@app.post("/api/projects/{slug}/cleanup")
+def api_cleanup_apply(slug: str):
+    if runner.active(slug) is not None:
+        raise HTTPException(409, "Na projektu právě běží jiná práce.")
+    result = cleanup.apply(slug)
+    if result is None:
+        raise HTTPException(404, "Projekt nenalezen.")
+    return result
+
+
+@app.post("/api/projects/{slug}/cleanup/restore")
+def api_cleanup_restore(slug: str):
+    if runner.active(slug) is not None:
+        raise HTTPException(409, "Na projektu právě běží jiná práce.")
+    result = cleanup.restore(slug)
     if result is None:
         raise HTTPException(404, "Projekt nenalezen.")
     return result
