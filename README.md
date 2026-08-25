@@ -6,8 +6,7 @@ telemetrie, žádné fonty z CDN.
 
 Načte EPUB, rozloží ho na odstavce, projde knihu nasucho a sestaví slovníček
 vlastních jmen, pak překládá po dávkách a průběžně kontroluje, co model vrátil.
-Výsledek exportuje do tří podob: česká kniha, zrcadlová kniha s originálem
-i překladem pod sebou, a prostý Markdown.
+Výsledek uloží jako českou knihu ve formátu EPUB.
 
 ---
 
@@ -110,13 +109,15 @@ stránky, kdežto označení mluvčího v dialogu nebo připsání citátu se op
 taky, ale uprostřed textu. Na jedné skutečné knize to našlo 969 odstavců z 3766
 a nespletlo se ani u jednoho.
 
-**Uprav, co ti vadí.** Klikni na kterýkoli odstavec v pravém sloupci. Otevře se
-pole, ve kterém překlad opravíš rukou, necháš přeložit znovu, nebo odstavec
-vyřadíš z knihy. Kurzívu píšeš jako `<em>text</em>`, tučné jako
-`<strong>text</strong>`.
+**Uprav, co ti vadí.** Klikni na kterýkoli odstavec v pravém sloupci a piš
+rovnou do něj. Kurzíva je Ctrl+I, tučné Ctrl+B, Enter uloží a Esc zruší.
+Tlačítka pod odstavcem umí ještě nechat ho přeložit znovu nebo ho vyřadit
+z knihy.
 
-**Exportuj.** Tlačítko *Uložit překlad* nabídne tři formáty. Soubory se ukládají
-do `projects/<název>/export/` s časovým razítkem, takže starší verze nepřepisují.
+**Ulož překlad.** Tlačítko *Uložit překlad (EPUB)* vyrobí českou knihu se
+zachovanou strukturou kapitol, kurzívou i poznámkami pod čarou. Názvy kapitol
+v obsahu jsou přeložené. Soubory se ukládají do `projects/<název>/export/`
+s časovým razítkem, takže starší verze nepřepisují.
 
 ---
 
@@ -145,8 +146,8 @@ Qwen2.5 kolem 14B jsou další rozumný kandidát. **Který z nich je lepší na
 překladu čekáš.
 
 Pořiďte si proto zvyk, který se vyplácí: přeložte s každým kandidátem **jednu
-kapitolu**, otevřete zrcadlový export a porovnejte. Přepnutí modelu je otázka
-jednoho kliknutí, takže je to levnější než hádat.
+kapitolu** a porovnejte ji v okně, kde stojí originál a překlad vedle sebe.
+Přepnutí modelu je otázka jednoho kliknutí, takže je to levnější než hádat.
 
 Pozor ještě na jednu věc: **zavři před překladem programy, které berou paměť
 grafické karty.**

@@ -1,8 +1,7 @@
 """Export hotoveho prekladu.
 
-Tri podoby:
+Dve podoby:
   translation - EPUB jen s prekladem, se zachovanou strukturou kapitol
-  mirror      - zrcadlovy EPUB, po kazdem odstavci originalu nasleduje preklad
   markdown    - prosty Markdown
 
 Poradi odstavcu i uroven nadpisu se drzi. Neprelozene odstavce se vypustit
@@ -26,7 +25,7 @@ MD_ESCAPE = re.compile(r"([\\`*_\[\]])")
 # na zacatku radku ma vyznam jeste toto
 MD_LINE_START = re.compile(r"^([#>+]|\d+\.|-\s)")
 
-KINDS = ("translation", "mirror", "markdown")
+KINDS = ("translation", "markdown")
 
 
 # ---------------------------------------------------------------- pomocne
@@ -49,6 +48,29 @@ def _strip_noterefs(html):
     return NOTEREF_RE.sub("", html)
 
 
+def chapter_titles(con):
+    """Nazvy kapitol pro obsah knihy, prelozene.
+
+    V databazi je ulozeny puvodni nazev z nacteneho EPUBu. Prelozeny nadpis
+    ale existuje, lezi v prvnim nadpisovem odstavci kapitoly, takze se do
+    obsahu vezme odtamtud. Kdyz kapitola nadpis nema nebo jeste neni prelozeny,
+    zustane puvodni nazev.
+    """
+    out = {}
+    for r in con.execute("SELECT ord, title FROM chapter ORDER BY ord"):
+        out[r["ord"]] = r["title"]
+    for r in con.execute(
+            "SELECT chapter, tgt_text FROM segment s WHERE kind = 'head'"
+            " AND status != 'skipped' AND tgt_text IS NOT NULL AND tgt_text != ''"
+            " AND ord = (SELECT MIN(ord) FROM segment t WHERE t.chapter = s.chapter"
+            "            AND t.kind = 'head' AND t.status != 'skipped'"
+            "            AND t.tgt_text IS NOT NULL AND t.tgt_text != '')"):
+        text = (r["tgt_text"] or "").strip()
+        if text:
+            out[r["chapter"]] = text
+    return out
+
+
 def _text_for(seg, side):
     """Text jednoho segmentu. Kdyz preklad chybi, vraci se zdroj."""
     if side == "src":
@@ -61,7 +83,7 @@ def _text_for(seg, side):
 
 # ------------------------------------------------------------------ EPUB
 
-def _chapter_html(segments, mirror):
+def _chapter_html(segments):
     """Jedna kapitola jako XHTML. Poznamky jdou na konec kapitoly."""
     body = []
     notes = []
@@ -84,34 +106,20 @@ def _chapter_html(segments, mirror):
             note = ('<aside epub:type="footnote" id="' + nid + '">'
                     '<p><sup>' + mark + "</sup> " + _strip_noterefs(html) +
                     "</p></aside>")
-            if mirror:
-                src_html, _ = _text_for(seg, "src")
-                note = ('<aside epub:type="footnote" id="' + nid + '">'
-                        '<p class="src"><sup>' + mark + "</sup> " +
-                        _strip_noterefs(src_html) + "</p>"
-                        '<p class="tgt"><sup>' + mark + "</sup> " +
-                        _strip_noterefs(html) + "</p></aside>")
             notes.append(note)
             paragraphs += 1
             continue
 
         tgt_html, gap = _text_for(seg, "tgt")
         missing += 1 if gap else 0
-        src_html, _ = _text_for(seg, "src")
         paragraphs += 1
 
         if seg["kind"] == "head":
             close_quote()
             level = min(6, max(1, seg["level"] or 1))
             tag = "h" + str(level)
-            if mirror:
-                body.append("<" + tag + ' class="src">' +
-                            _epub_noterefs(src_html) + "</" + tag + ">")
-                body.append("<" + tag + ' class="tgt">' +
-                            _epub_noterefs(tgt_html) + "</" + tag + ">")
-            else:
-                body.append("<" + tag + ">" + _epub_noterefs(tgt_html) +
-                            "</" + tag + ">")
+            body.append("<" + tag + ">" + _epub_noterefs(tgt_html) +
+                        "</" + tag + ">")
             continue
 
         if seg["kind"] == "quote":
@@ -121,11 +129,7 @@ def _chapter_html(segments, mirror):
         else:
             close_quote()
 
-        if mirror:
-            body.append('<p class="src">' + _epub_noterefs(src_html) + "</p>")
-            body.append('<p class="tgt">' + _epub_noterefs(tgt_html) + "</p>")
-        else:
-            body.append("<p>" + _epub_noterefs(tgt_html) + "</p>")
+        body.append("<p>" + _epub_noterefs(tgt_html) + "</p>")
 
     close_quote()
     if notes:
@@ -134,18 +138,6 @@ def _chapter_html(segments, mirror):
     return "\n".join(body), paragraphs, missing
 
 
-MIRROR_CSS = """
-body { line-height: 1.6; }
-p.src, h1.src, h2.src, h3.src, h4.src, h5.src, h6.src {
-  color: #666; font-style: normal; margin-bottom: 0.2em;
-}
-p.tgt, h1.tgt, h2.tgt, h3.tgt, h4.tgt, h5.tgt, h6.tgt {
-  color: #111; margin-top: 0.2em; margin-bottom: 1.4em;
-}
-blockquote { margin-left: 1.5em; color: #444; }
-aside { font-size: 0.9em; color: #444; }
-"""
-
 PLAIN_CSS = """
 body { line-height: 1.6; }
 blockquote { margin-left: 1.5em; color: #444; }
@@ -153,24 +145,25 @@ aside { font-size: 0.9em; color: #444; }
 """
 
 
-def build_epub(slug, mirror, out_path):
+def build_epub(slug, out_path):
     con = projects.open_db(slug)
     if con is None:
         return None
     try:
         book_row = con.execute("SELECT * FROM book WHERE id = 1").fetchone()
         chapters = con.execute("SELECT ord, title FROM chapter ORDER BY ord").fetchall()
+        nazvy = chapter_titles(con)
         out = epub.EpubBook()
-        out.set_identifier("zrcadlo-" + slug + ("-mirror" if mirror else ""))
+        out.set_identifier("zrcadlo-" + slug)
         title = book_row["title"]
-        out.set_title(title + (" (zrcadlově)" if mirror else "") )
+        out.set_title(title)
         out.set_language(book_row["target_lang"] or "cs")
         if book_row["author"]:
             out.add_author(book_row["author"])
 
         style = epub.EpubItem(uid="style", file_name="style/main.css",
                               media_type="text/css",
-                              content=(MIRROR_CSS if mirror else PLAIN_CSS))
+                              content=PLAIN_CSS)
         out.add_item(style)
 
         items = []
@@ -181,18 +174,19 @@ def build_epub(slug, mirror, out_path):
                 "SELECT ord, kind, level, src_html, tgt_html, note_id, note_txt"
                 " FROM segment WHERE chapter = ? AND status != 'skipped'"
                 " ORDER BY ord", (chap["ord"],))]
-            html, count, missing = _chapter_html(segs, mirror)
+            html, count, missing = _chapter_html(segs)
             total_paragraphs += count
             total_missing += missing
             name = "ch%03d.xhtml" % chap["ord"]
-            item = epub.EpubHtml(title=chap["title"], file_name=name,
+            nazev = nazvy.get(chap["ord"], chap["title"])
+            item = epub.EpubHtml(title=nazev, file_name=name,
                                  lang=book_row["target_lang"] or "cs")
             # bez deklarace <?xml?>: ebooklib si obsah sam parsuje a na retezci
             # s deklaraci kodovani spadne pri sestavovani navigace
             item.content = (
                 '<html xmlns="http://www.w3.org/1999/xhtml"'
                 ' xmlns:epub="http://www.idpf.org/2007/ops">'
-                "<head><title>" + _escape(chap["title"]) + "</title>"
+                "<head><title>" + _escape(nazev) + "</title>"
                 '<link rel="stylesheet" href="style/main.css" type="text/css"/>'
                 "</head><body>" + html + "</body></html>")
             item.add_item(style)
@@ -256,6 +250,7 @@ def build_markdown(slug, out_path):
     try:
         book_row = con.execute("SELECT * FROM book WHERE id = 1").fetchone()
         chapters = con.execute("SELECT ord, title FROM chapter ORDER BY ord").fetchall()
+        nazvy = chapter_titles(con)
         lines = ["# " + book_row["title"]]
         if book_row["author"]:
             lines.append("")
@@ -314,9 +309,8 @@ def run(slug, kind):
         path = outdir / (slug + "-" + stamp + ".md")
         info = build_markdown(slug, path)
     else:
-        suffix = "-zrcadlo" if kind == "mirror" else "-preklad"
-        path = outdir / (slug + suffix + "-" + stamp + ".epub")
-        info = build_epub(slug, kind == "mirror", path)
+        path = outdir / (slug + "-preklad-" + stamp + ".epub")
+        info = build_epub(slug, path)
 
     if info is None:
         return None

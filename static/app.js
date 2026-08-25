@@ -297,7 +297,12 @@ function renderChapter(chap, segs) {
     } else {
       b.title = "Klikni a můžeš překlad upravit.";
     }
-    b.addEventListener("click", () => segmentAction(b, seg));
+    // Otevira se na stisku, ne az na kliknuti: prohlizec umistuje kurzor
+    // pri stisku, takze odstavec musi byt editovatelny uz v tu chvili.
+    b.addEventListener("mousedown", () => {
+      if (b.isContentEditable) return;   // uz se edituje, nech kurzor na pokoji
+      segmentAction(b, seg);
+    });
     tgt.appendChild(b);
   });
 
@@ -312,22 +317,29 @@ function renderChapter(chap, segs) {
   paintChapterFoot();
 }
 
-/* Ruční úprava odstavce. Otevře se kliknutím v pravém sloupci: text jde
-   opravit, nechat přeložit znovu, nebo odstavec vyřadit z knihy. Nic se
-   nemění bez toho, aby uživatel klikl. */
+/* Ruční úprava odstavce přímo na místě. Odstavec se stane editovatelným,
+   pod ním se objeví jen tlačítka. Kurzíva a tučné fungují přes Ctrl+I a Ctrl+B,
+   jak je člověk zvyklý; do HTML se to převede při ukládání. */
 function segmentAction(paragraph, seg) {
+  // rozdelany editor u jineho odstavce se zavre, upravy v nem se zahodi
   const existing = $("tgt").querySelector(".seg-action");
-  const same = existing && existing.dataset.ord === String(seg.ord);
   if (existing) {
-    existing.previousElementSibling?.classList.remove("editing");
+    const stary = $("tgt").querySelector('p[data-ord="' + existing.dataset.ord + '"]');
+    if (stary) {
+      stary.contentEditable = "false";
+      stary.classList.remove("editing");
+    }
     existing.remove();
   }
-  if (same) return;
+
+  const puvodni = paragraph.innerHTML;
+  paragraph.contentEditable = "true";
+  paragraph.spellcheck = true;
+  paragraph.classList.add("editing");
 
   const box = document.createElement("div");
   box.className = "seg-action";
   box.dataset.ord = seg.ord;
-  paragraph.classList.add("editing");
 
   if (seg.review_note) {
     const why = document.createElement("span");
@@ -339,17 +351,9 @@ function segmentAction(paragraph, seg) {
     box.appendChild(why);
   }
 
-  const pole = document.createElement("textarea");
-  pole.rows = Math.min(10, Math.max(2, Math.ceil((seg.tgt_text || "").length / 60)));
-  pole.value = seg.tgt_html || seg.tgt_text || "";
-  pole.spellcheck = true;
-  box.appendChild(pole);
-
-  const zavri = () => { paragraph.classList.remove("editing"); box.remove(); };
-
   const ulozit = tlacitko("Uložit", async () => {
-    const seg2 = await patchSegment(seg, { tgt_html: pole.value });
-    if (seg2) { zavri(); }
+    const novy = await patchSegment(seg, { tgt_html: paragraph.innerHTML });
+    if (novy) closeEditor();
   });
 
   const znovu = tlacitko("Přeložit znovu", async () => {
@@ -360,10 +364,10 @@ function segmentAction(paragraph, seg) {
                 "/segments/" + seg.ord + "/retranslate", { method: "POST" });
     } catch (err) {
       notice("bad", "Odstavec se nepodařilo znovu přeložit.", err.message);
-      zavri();
+      closeEditor();
       return;
     }
-    zavri();
+    closeEditor();
     state.running = true;
     state.runKind = "translate";
     state.live = { tps: null, eta: null, note: "překládám odstavec znovu" };
@@ -375,23 +379,56 @@ function segmentAction(paragraph, seg) {
   const vyradit = tlacitko(
     seg.status === "skipped" ? "Vrátit do knihy" : "Vyřadit z knihy",
     async () => {
-      const novy = seg.status === "skipped"
+      const stav = seg.status === "skipped"
         ? (seg.tgt_text ? "done" : "pending") : "skipped";
-      const seg2 = await patchSegment(seg, { status: novy });
-      if (seg2) zavri();
+      const novy = await patchSegment(seg, { status: stav });
+      if (novy) closeEditor();
     }, true);
 
-  const zrusit = tlacitko("Zavřít", zavri, true);
+  const zrusit = tlacitko("Zrušit", () => {
+    paragraph.innerHTML = puvodni;
+    closeEditor();
+  }, true);
 
   box.append(ulozit, znovu, vyradit, zrusit);
   const napoveda = document.createElement("span");
   napoveda.className = "hint2";
-  napoveda.textContent = "Kurzívu piš jako <em>text</em>, tučné jako <strong>text</strong>. "
+  napoveda.textContent = "Kurzíva Ctrl+I, tučné Ctrl+B. Enter uloží, Esc zruší. "
     + "Vyřazený odstavec se nepřekládá ani nedostane do exportu, ale zůstane v databázi.";
   box.appendChild(napoveda);
 
+  paragraph.addEventListener("keydown", editorKeys);
   paragraph.after(box);
-  pole.focus();
+  // Kurzor umisti prohlizec sam podle mista stisku. Kdyby se to nepovedlo,
+  // treba kdyz se editor otevrel jinak nez mysi, umisti se na konec textu
+  // rucne, at se da psat vzdycky.
+  // setTimeout, ne requestAnimationFrame: ten se v minimalizovanem nebo
+  // skrytem okne nespusti vubec a pojistka by byla k nicemu
+  setTimeout(() => {
+    if (document.activeElement !== paragraph) paragraph.focus();
+    const sel = window.getSelection();
+    const uvnitr = sel && sel.rangeCount && paragraph.contains(sel.anchorNode);
+    if (!uvnitr) {
+      const range = document.createRange();
+      range.selectNodeContents(paragraph);
+      range.collapse(false);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+  }, 0);
+
+  function editorKeys(e) {
+    if (e.key === "Enter") { e.preventDefault(); ulozit.click(); }
+    if (e.key === "Escape") { e.preventDefault(); zrusit.click(); }
+  }
+
+  function closeEditor() {
+    paragraph.removeEventListener("keydown", editorKeys);
+    paragraph.contentEditable = "false";
+    paragraph.classList.remove("editing");
+    paragraph.blur();
+    box.remove();
+  }
 }
 
 function tlacitko(popisek, akce, ghost) {
@@ -1228,20 +1265,15 @@ async function runCleanup() {
 
 /* ---------------- export ---------------- */
 
-const EXPORT_NAMES = {
-  translation: "EPUB jen s překladem",
-  mirror: "zrcadlový EPUB",
-  markdown: "Markdown",
-};
-
-async function runExport(kind, button) {
+async function runExport() {
+  const button = $("exp");
   const label = button.textContent;
   button.disabled = true;
   button.textContent = "ukládám…";
   notice(null);
   try {
     const info = await api("/api/projects/" + encodeURIComponent(state.slug) +
-                           "/export?kind=" + kind, { method: "POST" });
+                           "/export?kind=translation", { method: "POST" });
     const kb = Math.max(1, Math.round(info.size / 1024));
     const hint = "Soubor " + info.name + " · " + num(kb) + " kB · ve složce " +
                  "projects/" + state.slug + "/export/";
@@ -1250,13 +1282,13 @@ async function runExport(kind, button) {
         num(info.paragraphs) + " místo " + num(info.source_paragraphs) + ".",
         hint + " Tohle je chyba, dej vědět.");
     } else if (info.missing) {
-      notice("warn", EXPORT_NAMES[kind] + " uložen, " +
+      notice("warn", "Překlad uložen, " +
         withNum(info.missing, "odstavec ještě není přeložený",
                 "odstavce ještě nejsou přeložené",
                 "odstavců ještě není přeložených") + ".",
         hint + " Nepřeložené odstavce jsou v souboru v originále, aby jejich počet seděl.");
     } else {
-      notice("ok", EXPORT_NAMES[kind] + " uložen, " +
+      notice("ok", "Překlad uložen, " +
         withNum(info.paragraphs, "odstavec", "odstavce", "odstavců") + " ve " +
         withNum(info.chapters, "kapitole", "kapitolách", "kapitolách") + ".", hint);
     }
@@ -1272,7 +1304,6 @@ function updateExportButtons() {
   const has = !!state.book;
   $("exp").disabled = !has;
   $("clean").disabled = !has;
-  if (!has) $("exports").hidden = true;
 }
 
 /* ---------------- nacteni knihy ---------------- */
@@ -1347,12 +1378,7 @@ function wire() {
 
   $("clean").addEventListener("click", runCleanup);
 
-  $("exp").addEventListener("click", () => {
-    const box = $("exports");
-    box.hidden = !box.hidden;
-  });
-  [...$("exports").querySelectorAll("button")].forEach((b) =>
-    b.addEventListener("click", () => runExport(b.dataset.kind, b)));
+  $("exp").addEventListener("click", runExport);
 
   $("glossopen").addEventListener("click", () => glossOpen(true));
   $("glossclose").addEventListener("click", () => glossOpen(false));
