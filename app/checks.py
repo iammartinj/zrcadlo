@@ -10,8 +10,18 @@ from bs4 import BeautifulSoup
 
 WORD_RE = re.compile(r"[^\W\d_]+", re.UNICODE)
 EMPHASIS = ("em", "strong")
+BLOCK = ("p", "div", "body", "html", "h1", "h2", "h3", "h4", "h5", "h6")
 
 CZ_DIACRITICS = set("áčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ")
+
+# Kdyz model dostane k prekladu utrzek nebo holé číslo, nema co prekladat
+# a nekdy si domysli celý odstavec. Poctivy cesky preklad je proti anglictine
+# delsi nanejvys o ctvrtinu (99. percentil 1,26; krajni hodnota 2,82 na
+# 1031 dlouhych odstavcich teto knihy), takze trojnasobek uz je smyslenka.
+# Prirustek v znacich hlida druhou stranu: "Ad" -> "Reklama" je taky 3,5x,
+# ale o pouhych pet znaku, a to je v poradku.
+OVERGROWN_FACTOR = 3.0
+OVERGROWN_MIN_GROWTH = 25
 
 # nejcastejsi anglicka slova; kdyz jich je v ceskem prekladu hodne,
 # nejspis kus textu zustal nepreloženy
@@ -223,12 +233,16 @@ def strip_added_markup(src_html, tgt_html):
     nadbytecne = [n for n in EMPHASIS if tgt.get(n) and not src.get(n)]
     if not nadbytecne:
         return tgt_html
-    soup = BeautifulSoup(tgt_html, "lxml")
+    # html.parser, ne lxml: lxml obali volny text do <html><body><p>, ten <p>
+    # se pak dostal do databaze a v UI schoval cely odstavec.
+    soup = BeautifulSoup(tgt_html, "html.parser")
     for name in nadbytecne:
         for tag in soup.find_all(name):
             tag.unwrap()
-    node = soup.body or soup
-    return node.decode_contents().strip()
+    # blokovou znacku od modelu odstranime taky, text uvnitr zustava
+    for tag in soup.find_all(BLOCK):
+        tag.unwrap()
+    return str(soup).strip()
 
 
 def added_markup(src_html, tgt_html):
@@ -249,6 +263,18 @@ def added_markup(src_html, tgt_html):
 
 # ------------------------------------------------------------ dohromady
 
+def overgrown(src_text, tgt_text):
+    """Je preklad nepomerne delsi nez zdroj? Vraci (ano, nasobek)."""
+    src = (src_text or "").strip()
+    tgt = (tgt_text or "").strip()
+    if not src or not tgt:
+        return False, 0.0
+    if len(tgt) - len(src) < OVERGROWN_MIN_GROWTH:
+        return False, 0.0
+    nasobek = len(tgt) / len(src)
+    return nasobek >= OVERGROWN_FACTOR, nasobek
+
+
 def inspect(segment, tgt_html, tgt_text, entries):
     """Vsechny kontrolky nad jednim segmentem. Vraci seznam vyhrad."""
     problems = []
@@ -263,6 +289,12 @@ def inspect(segment, tgt_html, tgt_text, entries):
         problems.append({"kind": "english",
                          "detail": "česky vypadá jen " + str(round(ratio * 100)) +
                                    " % slov"})
+
+    prilis, nasobek = overgrown(segment["src_text"], tgt_text)
+    if prilis:
+        problems.append({"kind": "fabrication",
+                         "detail": "překlad je " + str(round(nasobek, 1)) +
+                                   "× delší než zdroj, model nejspíš přidal text"})
 
     added = added_markup(segment["src_html"], tgt_html)
     if added:

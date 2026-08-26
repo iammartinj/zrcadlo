@@ -142,6 +142,10 @@ def system_prompt(book, glossary=None, strict=False):
         "Počet odstavců na výstupu se musí přesně rovnat počtu na vstupu."
         " Odstavce nespojuj ani nerozděluj.",
         "Nepiš žádný úvod, shrnutí ani vysvětlení, jen očíslované odstavce.",
+        "Přelož přesně to, co na vstupu stojí, a nic navíc. Odstavec může být"
+        " jen štítek, samotné číslo nebo věta utržená uprostřed; i tak ho"
+        " přelož tak, jak je, a nedoplňuj chybějící část. Když není co"
+        " překládat, opiš vstup beze změny. Nikdy si nedomýšlej vlastní text.",
         "Značky {{1}}, {{2}} jsou odkazy na poznámky pod čarou. Přepiš je beze"
         " změny na odpovídající místo v české větě.",
         "Značky <em> a <strong> smíš použít jen tam, kde stojí i ve zdrojovém"

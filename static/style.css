@@ -78,7 +78,7 @@ body{
 .pane--tgt .pane-lang{color:var(--accent)}
 .pane-meta{font-size:10px;color:var(--muted);letter-spacing:.08em}
 .reader{
-  overflow-y:auto;padding:34px 26px 60px;
+  flex:1;overflow-y:auto;padding:34px 26px 60px;
   line-height:var(--step);
   font-size:13px;
   scrollbar-width:thin;
@@ -86,8 +86,10 @@ body{
 .reader p{margin-bottom:1.5em;max-width:52ch}
 .reader p.head{font-weight:700;letter-spacing:.04em;margin-bottom:2em}
 .pane--tgt .reader{color:var(--accent-ink)}
-.pane--tgt .reader p{opacity:0;transform:translateY(3px);transition:opacity .5s ease,transform .5s ease}
-.pane--tgt .reader p.on{opacity:1;transform:none}
+/* jen prime potomky: vnoreny <p> by jinak zustal na opacity:0 */
+.pane--tgt .reader>p{opacity:0;transform:translateY(3px);transition:opacity .5s ease,transform .5s ease}
+.pane--tgt .reader>p.on{opacity:1;transform:none}
+.reader p p{margin-bottom:0}
 .pane-foot{
   border-top:1px solid var(--rule);padding:9px 26px;
   display:flex;justify-content:space-between;align-items:center;
