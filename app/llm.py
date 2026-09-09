@@ -49,8 +49,10 @@ def _payload(messages, stream, with_repeat_penalty=True):
 def _explain(exc):
     if isinstance(exc, httpx.ConnectError):
         return ("LM Studio neodpovídá na " + CFG["lm_studio"]["base_url"] +
-                ". Spusť ho, v záložce Developer zapni Start Server a načti model "
-                + CFG["lm_studio"]["model"] + ".")
+                ". Spusť ho, v nastavení zapni Local Models → Local Model API"
+                " → Local API server a načti model "
+                + CFG["lm_studio"]["model"] +
+                ". Ve starší řadě 0.3 je totéž pod záložkou Developer.")
     if isinstance(exc, httpx.ReadTimeout):
         return ("LM Studio neodpovědělo do " + str(CFG["lm_studio"]["timeout_s"]) +
                 " s. Model nejspíš počítá příliš dlouho, nebo se zasekl.")

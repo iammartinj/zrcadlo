@@ -54,7 +54,7 @@ a napíše konkrétně co s tím. Nehádej, přečti si to hlášení.
 ## 2. Instalace a spuštění
 
 ```
-git clone https://github.com/<uživatel>/zrcadlo.git
+git clone https://github.com/iammartinj/zrcadlo.git
 cd zrcadlo
 run.bat
 ```

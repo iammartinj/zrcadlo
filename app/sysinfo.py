@@ -67,8 +67,10 @@ def lm_studio(base_url, model_name, timeout=3.0):
             "ok": False,
             "reason": "offline",
             "message": "LM Studio neodpovídá na " + url + ".",
-            "hint": "Spusť LM Studio, otevři záložku Developer, zapni Start Server "
-                    "na portu 1234 a načti model " + model_name + ".",
+            "hint": "Spusť LM Studio, v nastavení zapni Local Models → "
+                    "Local Model API → Local API server a načti model "
+                    + model_name +
+                    ". Ve starší řadě 0.3 je totéž pod záložkou Developer.",
             "detail": type(exc).__name__,
             "models": [],
         }
