@@ -275,6 +275,43 @@ def overgrown(src_text, tgt_text):
     return nasobek >= OVERGROWN_FACTOR, nasobek
 
 
+HONORIFIC_CS = (r"(?:pan|pana|panu|panem|pane|panovi|paní|slečna|slečny|slečně"
+                r"|slečnu|slečno|slečnou)")
+HONORIFIC_EN = r"(?:Mr|Mrs|Ms|Miss|Mister|Madam|Madame|Sir|Lady|Lord|Dame)\.?"
+
+
+def honorific_added(src_text, tgt_text, entries):
+    """Osoby ze slovnicku, pred ktere preklad pridal pana nebo pani.
+
+    U samotneho krestniho jmena model sahne po zdvorilostni forme, i kdyz
+    originál zadny titul nema. Hleda se jen u osob ze slovnicku.
+    """
+    if not entries or not tgt_text:
+        return []
+    out = []
+    for entry in entries:
+        if entry.get("category") != "osoba":
+            continue
+        term_src = (entry.get("term_src") or "").strip()
+        term_cs = (entry.get("term_cs") or "").strip() or term_src
+        name = r"(?<!\w)" + re.escape(term_src) + r"(?!\w)"
+        if not term_src or not re.search(name, src_text, re.IGNORECASE):
+            continue
+        if re.search(r"(?<!\w)" + HONORIFIC_EN + r"\s+" + re.escape(term_src) + r"(?!\w)",
+                     src_text, re.IGNORECASE):
+            continue
+        words = WORD_RE.findall(term_cs)
+        if not words:
+            continue
+        base = stem(words[0])
+        for m in re.finditer(r"(?<!\w)" + HONORIFIC_CS + r"\s+([^\W\d_]+)",
+                             tgt_text, re.IGNORECASE):
+            if strip_diacritics(m.group(1)).lower().startswith(base):
+                out.append(term_src)
+                break
+    return out
+
+
 def inspect(segment, tgt_html, tgt_text, entries):
     """Vsechny kontrolky nad jednim segmentem. Vraci seznam vyhrad."""
     problems = []
@@ -283,6 +320,11 @@ def inspect(segment, tgt_html, tgt_text, entries):
     if misses:
         seznam = ", ".join(m["term_src"] + " → " + m["term_cs"] for m in misses)
         problems.append({"kind": "glossary", "detail": seznam})
+
+    tituly = honorific_added(segment["src_text"], tgt_text, entries)
+    if tituly:
+        problems.append({"kind": "honorific",
+                         "detail": "„pan/paní“ navíc před " + ", ".join(tituly)})
 
     suspicious, ratio = english_residue(tgt_text)
     if suspicious:

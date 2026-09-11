@@ -5,8 +5,8 @@ jazykovým modelem**. Nic neodchází z počítače — žádný cloudový přek
 telemetrie, žádné fonty z CDN.
 
 Načte EPUB, rozloží ho na odstavce, projde knihu nasucho a sestaví slovníček
-vlastních jmen, pak překládá po dávkách a průběžně kontroluje, co model vrátil.
-Výsledek uloží jako českou knihu ve formátu EPUB.
+vlastních jmen, pak překládá a průběžně kontroluje, co model vrátil. Výsledek
+uloží jako českou knihu ve formátu EPUB.
 
 ---
 
@@ -41,7 +41,7 @@ adresa, obvykle `http://127.0.0.1:1234/v1`. Přes **Edit port** se dá port změ
 > tlačítko **Start Server**.
 
 **Nech zapnuté Just-in-time model loading.** Server si pak model natáhne sám
-podle jména v požadavku.
+podle jména v požadavku a při potřebě jiného modelu ho sám vymění.
 
 **CORS nech vypnuté.** Zrcadlo se ptá z Pythonu, ne ze stránky v prohlížeči,
 takže ho nepotřebuje.
@@ -76,17 +76,19 @@ Kniha se rozloží na kapitoly a odstavce a založí se projekt ve složce
 slovníček*. Aplikace projde knihu nasucho, nasbírá vlastní jména a opakující se
 pojmy, zahodí všechno s méně než dvěma výskyty a u zbytku nechá model navrhnout
 český tvar, rod a odůvodnění. **Tohle trvá dlouho** — na knize o 1400 odstavcích
-počítej s hodinou a půl.
+počítej s hodinou a půl. Slovníček sestavuje vždy *pomocný model* (viz
+[Nastavení](#nastavení)), ne ten, kterým se překládá.
 
-Slovníček se pak vkládá do promptu každé dávky, ale jen ty položky, jejichž
-výraz se v dané dávce opravdu vyskytuje. Díky tomu se jména drží stejná napříč
+Slovníček se pak vkládá do promptu, ale jen ty položky, jejichž výraz se
+v překládaném textu opravdu vyskytuje. Díky tomu se jména drží stejná napříč
 celou knihou. V panelu jde každou položku opravit, přepnout jí kategorii nebo
 rod, vyřadit ji, nebo ji zamknout. Zamčenou položku model při novém sestavování
-nepřepíše.
+nepřepíše. U osob stojí za to vyplnit rod: TranslateGemma podle něj drží shodu
+v minulém čase.
 
 **Nastav stylovou kartu.** Vpravo nahoře *Nastavení*: registr, rod vypravěče,
 tykání nebo vykání, přechylování ženských příjmení a poznámka volným textem.
-Všechno jde do systémového promptu každé dávky.
+Všechno jde do pokynu pro model.
 
 **Přelož.** Tlačítko PŘELOŽIT KNIHU projede celou knihu od místa, kde se
 skončilo. Zastavit se dá kdykoli — hotové odstavce zůstanou uložené a příště
@@ -94,9 +96,7 @@ naváže tam, kde přestal. Průběh vidíš v obou sloupcích a na svislém uka
 
 **Zkontroluj podezřelé odstavce.** Odstavec, který neprošel kontrolou, má
 v pravém sloupci tenkou svislou linku. Po kliknutí uvidíš důvod a můžeš ho nechat
-přeložit znovu. Kontroluje se, jestli sedí počet odstavců, jestli se v překladu
-objevily výrazy ze slovníčku, jestli nezůstala angličtina a jestli si model
-nepřidal zvýraznění, které originál nemá.
+přeložit znovu. Co všechno se kontroluje, je [níže](#co-aplikace-hlídá-sama).
 
 **Vyčisti tiskový balast.** Knihy převedené z PDF si často nesou živá záhlaví,
 čísla stránek, tisková razítka a názvy souborů ze sazby jako běžné odstavce.
@@ -139,34 +139,77 @@ počítá procesor a rychlost spadne na polovinu i míň.
 **RTX 3060 existuje ve verzi 8 GB i 12 GB.** Zjisti si kterou máš, rozhoduje to.
 V LM Studiu se velikost karty ukazuje při načítání modelu.
 
-Ke konkrétním modelům: `gemma-3-12b-it-qat` je trénovaný tak, aby snesl
-čtyřbitovou kvantizaci, takže u něj Q4 neztrácí tolik jako jinde. Modely řady
-Qwen2.5 kolem 14B jsou další rozumný kandidát. **Který z nich je lepší na
-českou beletrii, se od stolu říct nedá** — záleží na knize i na tom, co od
-překladu čekáš.
-
-Pořiďte si proto zvyk, který se vyplácí: přeložte s každým kandidátem **jednu
+Pořiďte si zvyk, který se vyplácí: přeložte s každým kandidátem **jednu
 kapitolu** a porovnejte ji v okně, kde stojí originál a překlad vedle sebe.
 Přepnutí modelu je otázka jednoho kliknutí, takže je to levnější než hádat.
 
 Pozor ještě na jednu věc: **zavři před překladem programy, které berou paměť
 grafické karty.**
 
+### Gemma 3 — výchozí a pomocný model
+
+`gemma-3-12b-it-qat` je trénovaný tak, aby snesl čtyřbitovou kvantizaci, takže
+u něj Q4 neztrácí tolik jako jinde. Umí plnit úkoly, proto **sestavuje
+slovníček** i tehdy, když překládáš jiným modelem. Nech ho staženého.
+
+### TranslateGemma — model jen na překlad
+
+`translategemma-12b-it` od Googlu je Gemma 3 doučená výhradně na překlad. Na
+ukázce románu psala čistší češtinu než Gemma 3, s kontextem správně držela rod
+postav a vykání a nedělala nesmyslná slova. Cenou je sklon zplošťovat obrazná
+místa a vysvětlovat eliptické věty.
+
+Nemá chat ani systémové pokyny, a proto s ní Zrcadlo mluví jinak: překládá **po
+jednom odstavci**. K odstavci přidá tři předchozí přeložené odstavce z téže
+kapitoly, pojmy ze slovníčku a stylovou kartu jako krátký pokyn. Jednotky nechává
+jako v originále (stopy zůstanou stopami) a zvýraznění ze zdroje zachovává.
+
+**1. Stáhni model.** V Discover vyhledej `mradermacher/translategemma-12b-it-GGUF`
+a v rozbalovacím seznamu velikostí vyber **Q4_K_M (6,8 GB)**. Předvybraná položka
+nemusí být ta správná.
+
+**2. Přepiš mu šablonu, jinak se nenačte.** Jeho vlastní šablona odmítne běžnou
+zprávu a server při startu spadne s hláškou *exited before becoming healthy*.
+V LM Studiu otevři **My Models**, u `translategemma-12b-it` klikni na ozubené
+kolo, sjeď do sekce **Advanced** a otevři **Chat Template**. Obsah pole celý
+nahraď obsahem souboru
+[`docs/translategemma-chat-template.jinja`](docs/translategemma-chat-template.jinja)
+a ulož. Zrcadlo šablonu nepoužívá, posílá hotový text — jde jen o to, aby server
+naběhl.
+
+**3. Vyber ji v aplikaci.** Gemma 3 musí zůstat stažená kvůli slovníčku.
+Na obě se nevejdou 11 GB najednou, ale LM Studio si je vymění samo, výměna trvá
+kolem deseti sekund.
+
+Nová jména, která se objeví až během překladu, TranslateGemma do slovníčku
+nedoplňuje — neumí takový úkol splnit a přepínat model po každém odstavci by
+bylo pomalejší než překlad. Když se v knize objeví nové postavy, sestav
+slovníček znovu.
+
 ---
 
 ## Co aplikace hlídá sama
 
-Počet odstavců v každé dávce musí sedět. Když ne, dávka se zopakuje s důraznější
-instrukcí, a po druhém neúspěchu se odstavce překládají po jednom.
+U Gemmy 3 musí sedět počet odstavců v každé dávce. Když ne, dávka se zopakuje
+s důraznější instrukcí, a po druhém neúspěchu se odstavce překládají po jednom.
+
+Když odpověď narazí na limit `max_tokens`, aplikace to řekne. U TranslateGemmy
+dostane odstavec stav k revizi s poznámkou, že může být useknutý.
 
 Zvýraznění, které si model přidal a zdroj ho nemá, se odstraní. Maže se jen
-značka, text zůstává.
+značka, text zůstává. TranslateGemma vrací zvýraznění jako `*hvězdičky*`, ty se
+převedou zpátky na kurzívu a tučné písmo.
 
-Nová vlastní jména, která se objeví až během překladu, se průběžně doplňují do
-slovníčku a od dalšího výskytu se používají.
+K revizi jde odstavec, ve kterém chybí výraz ze slovníčku, zůstala angličtina,
+model si domyslel text (překlad je nejméně třikrát delší než zdroj), nebo přidal
+„pan“ či „paní“ před jméno osoby ze slovníčku, ačkoli originál žádný titul nemá.
 
-Stav se ukládá po každé dávce. Když aplikace spadne nebo ji zavřeš, po dalším
-spuštění nabídne pokračování. Změna zdrojového EPUBu se pozná podle otisku.
+U Gemmy 3 se nová vlastní jména, která se objeví až během překladu, průběžně
+doplňují do slovníčku a od dalšího výskytu se používají.
+
+Stav se ukládá po každé dávce nebo odstavci. Když aplikace spadne nebo ji
+zavřeš, po dalším spuštění nabídne pokračování. Změna zdrojového EPUBu se pozná
+podle otisku.
 
 ---
 
@@ -179,6 +222,9 @@ protože nenese text k překladu.
 
 Kontrola slovníčku porovnává kmeny, takže u výrazů, kde se v češtině mění
 samohláska i souhlásky naráz, může označit k revizi i správný překlad.
+
+Kontrola zbylé angličtiny se u krátkých odstavců, kde převažují vlastní jména,
+může ozvat i u správného překladu.
 
 Kvalita překladu je kvalita modelu. Aplikace hlídá strukturu, konzistenci jmen
 a zjevné vady, ale jestli se text dobře čte, posoudí jen člověk.
@@ -193,9 +239,17 @@ Všechno podstatné je v `config.json`:
 {
   "lm_studio": {
     "base_url": "http://127.0.0.1:1234/v1",  // adresa serveru LM Studia
-    "model": "gemma-3-12b-it-qat",           // mění se i v aplikaci
+    "model": "gemma-3-12b-it-qat",           // model pro překlad, mění se i v aplikaci
+    "helper_model": "gemma-3-12b-it-qat",    // model pro slovníček; prázdný = stejný jako model
     "context": 8192,
     "timeout_s": 900
+  },
+  "models": {
+    // nastavení podle modelu: jak se s ním mluví a čím přepisuje "inference"
+    "translategemma-12b-it": {
+      "mode": "translategemma",
+      "temperature": 0.1     // méně rozptylu mezi běhy, na ukázce bez ztráty kvality
+    }
   },
   "inference": {
     "temperature": 0.3,      // nižší = věrnější, vyšší = volnější
@@ -205,7 +259,7 @@ Všechno podstatné je v `config.json`:
     "max_tokens": 4096
   },
   "batching": {
-    "target_source_tokens": 1200,  // kratší dávka = méně chyb, ale pomalejší
+    "target_source_tokens": 1200,  // jen Gemma 3; kratší dávka = méně chyb, ale pomalejší
     "chars_per_token": 4.0,
     "max_segments": 25
   },
@@ -225,12 +279,21 @@ Všechno podstatné je v `config.json`:
 app/          backend v Pythonu
   epubin.py     rozklad EPUBu na kapitoly a odstavce
   glossary.py   sběr slovníčku
-  translate.py  překladový běh, dávkování
+  translate.py  překladový běh, dávky pro Gemmu 3, odstavce pro TranslateGemmu
+  prompt.py     pokyny a formát pro oba druhy modelů
   checks.py     kontroly kvality
   export.py     výstup do EPUBu a Markdownu
   llm.py        rozhraní k LM Studiu
 static/       rozhraní, vanilla JS bez build kroku
+docs/         šablona pro TranslateGemmu do LM Studia
+tests/        testy
 projects/     projekty knih (do repozitáře nepatří)
+```
+
+Testy se spouštějí z kořene repozitáře:
+
+```
+.venv\Scripts\python.exe -m unittest discover -s tests
 ```
 
 Obsah knih do repozitáře nepatří — složka `projects/` je v `.gitignore`.

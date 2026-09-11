@@ -575,17 +575,21 @@ def mark_for_retranslation(slug, entry_id):
     return {"count": len(ids), "chapters": chapters}
 
 
-def collect_text(run, messages, track_speed=True):
+def collect_text(run, messages, track_speed=True, model=None):
     """Odpoved modelu jako jeden retezec. Vraci None, kdyz se ma zastavit.
 
     track_speed=False u kratkych pomocnych dotazu. U nich prevazi rezie nad
     generovanim, takze vychazi nizka rychlost, a kdyby prepsala udaj z davky,
     ukazovalo by okno rychlost pomocneho dotazu misto rychlosti prekladu.
+
+    Bez model se pta pomocneho modelu. Slovnicek potrebuje model, ktery umi
+    plnit ukoly, a prekladovy to umet nemusi (TranslateGemma neumi).
     """
     chunks = []
     tokens = 0
     t0 = time.time()
-    for kind, payload in llm.stream_chat(messages, run.should_stop):
+    model = model or CFG["lm_studio"].get("helper_model") or CFG["lm_studio"]["model"]
+    for kind, payload in llm.stream_chat(messages, run.should_stop, model=model):
         if kind == "delta":
             chunks.append(payload)
         elif kind == "usage":

@@ -10,6 +10,8 @@ DEFAULTS = {
     "lm_studio": {
         "base_url": "http://127.0.0.1:1234/v1",
         "model": "google/gemma-3-12b-it-qat",
+        # model pro sestavovani slovnicku; prazdny znamena stejny jako pro preklad
+        "helper_model": "",
         "context": 8192,
         "timeout_s": 900,
     },
@@ -19,6 +21,11 @@ DEFAULTS = {
         "repeat_penalty": 1.05,
         "seed": 606169,
         "max_tokens": 4096,
+    },
+    # Nastaveni podle modelu, klic je id modelu v LM Studiu. "mode" urcuje, jak
+    # se s modelem mluvi; ostatni klice prepisuji hodnoty z "inference".
+    "models": {
+        "translategemma-12b-it": {"mode": "translategemma", "temperature": 0.1},
     },
     "batching": {"target_source_tokens": 1200, "chars_per_token": 4.0,
                  "max_segments": 25},
@@ -70,3 +77,21 @@ def save(updates):
     CFG.clear()
     CFG.update(fresh)
     return CFG
+
+
+def profile(model_id):
+    """Nastaveni konkretniho modelu. Id z LM Studia muze mit predponu vydavatele."""
+    models = CFG.get("models") or {}
+    if model_id in models:
+        return models[model_id]
+    return models.get(model_id.rsplit("/", 1)[-1], {})
+
+
+def translation_mode(model_id=None):
+    """Jak se s prekladovym modelem mluvi: "chat", nebo "translategemma"."""
+    return profile(model_id or CFG["lm_studio"]["model"]).get("mode", "chat")
+
+
+def helper_model():
+    """Model pro slovnicek. Musi umet plnit ukoly, prekladovy model to umet nemusi."""
+    return CFG["lm_studio"].get("helper_model") or CFG["lm_studio"]["model"]

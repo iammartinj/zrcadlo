@@ -282,6 +282,11 @@ def api_glossary_build(slug: str):
     lm = sysinfo.lm_studio(CFG["lm_studio"]["base_url"], CFG["lm_studio"]["model"])
     if not lm["ok"] and lm["reason"] in ("offline", "http"):
         raise HTTPException(409, lm["message"] + " " + lm["hint"])
+    helper = config.helper_model()
+    if lm["models"] and helper not in lm["models"]:
+        raise HTTPException(409, "Slovníček sestavuje pomocný model " + helper +
+                                 ", který v LM Studiu není. Stáhni ho, nebo změň"
+                                 " lm_studio.helper_model v config.json.")
     run, fresh = glossary.start(slug)
     if run.kind != "glossary":
         raise HTTPException(409, "Na projektu právě běží překlad.")

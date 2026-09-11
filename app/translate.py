@@ -2,11 +2,14 @@
 
 Beh drzi vlastni vlakno, spolecnou obsluhu ma v modulu runner. Rozhrani ho
 posloucha pres frontu udalosti, takze prekresleni okna beh nepreusi.
+
+Chatovy model (Gemma 3) preklada v davkach se znackami [[n]]. TranslateGemma
+chat nema a preklada po odstavcich s predchozimi odstavci jako kontextem.
 """
 import re
 import time
 
-from . import checks, db, llm, projects, prompt, runner
+from . import checks, config, db, llm, projects, prompt, runner
 from . import glossary as glossary_mod
 from .config import CFG
 
@@ -142,7 +145,6 @@ def glossary_for(con, batch):
 def _worker(run):
     path = projects.project_dir(run.slug)
     con = db.connect(path / "project.db")
-    cfg_batch = CFG["batching"]
     chapter = run.params["chapter"]
     t0 = time.time()
     try:
@@ -175,31 +177,10 @@ def _worker(run):
             runner.close_record(con, run, "done", t0)
             return
 
-        batches = _batches_by_chapter(pending, cfg_batch)
-        run.emit(dict(run.state, type="start", batches=len(batches)))
-
-        segs_done = 0
-        for bi, batch in enumerate(batches, 1):
-            if run.should_stop():
-                break
-            kde = ("kapitola " + str(batch[0]["chapter"]) + ", dávka "
-                   if chapter is None else "dávka ")
-            run.progress(message=kde + str(bi) + " / " + str(len(batches)))
-            entries = glossary_for(con, batch)
-            results, stopped = _translate_batch(run, con, book, batch, cfg_batch,
-                                                entries)
-            # pri zastaveni se ulozi odstavce, ktere uz dobehly, zbytek zustane pending
-            _commit(con, run, batch, results, entries, partial=stopped)
-            if stopped:
-                break
-            _learn_new_names(run, con, book, batch)
-            segs_done += len(batch)
-            elapsed = max(0.001, time.time() - t0)
-            per_seg = elapsed / max(1, segs_done)
-            remaining = sum(len(b) for b in batches[bi:])
-            run.progress(eta_s=int(per_seg * remaining),
-                         message=kde + str(bi) + " / " + str(len(batches)) +
-                                 " hotová")
+        if config.translation_mode() == "translategemma":
+            _translate_translategemma(run, con, book, pending, chapter, t0)
+        else:
+            _translate_batches(run, con, book, pending, chapter, t0)
 
         status = "stopped" if run.should_stop() else "done"
         runner.close_record(con, run, status, t0)
@@ -213,6 +194,36 @@ def _worker(run):
         runner.close_record(con, run, "error", t0, msg)
     finally:
         con.close()
+
+
+def _translate_batches(run, con, book, pending, chapter, t0):
+    """Davky se znackami [[n]], jak je zvykly chatovy model."""
+    cfg_batch = CFG["batching"]
+    batches = _batches_by_chapter(pending, cfg_batch)
+    run.emit(dict(run.state, type="start", batches=len(batches)))
+
+    segs_done = 0
+    for bi, batch in enumerate(batches, 1):
+        if run.should_stop():
+            break
+        kde = ("kapitola " + str(batch[0]["chapter"]) + ", dávka "
+               if chapter is None else "dávka ")
+        run.progress(message=kde + str(bi) + " / " + str(len(batches)))
+        entries = glossary_for(con, batch)
+        results, stopped = _translate_batch(run, con, book, batch, cfg_batch,
+                                            entries)
+        # pri zastaveni se ulozi odstavce, ktere uz dobehly, zbytek zustane pending
+        _commit(con, run, batch, results, entries, partial=stopped)
+        if stopped:
+            break
+        _learn_new_names(run, con, book, batch)
+        segs_done += len(batch)
+        elapsed = max(0.001, time.time() - t0)
+        per_seg = elapsed / max(1, segs_done)
+        remaining = sum(len(b) for b in batches[bi:])
+        run.progress(eta_s=int(per_seg * remaining),
+                     message=kde + str(bi) + " / " + str(len(batches)) +
+                             " hotová")
 
 
 def recheck(slug, chapter=None):
@@ -365,8 +376,10 @@ def _learn_new_names(run, con, book, batch):
         {"role": "system", "content": glossary_mod.czech_system(book)},
         {"role": "user", "content": listing},
     ]
-    # track_speed=False: kratky pomocny dotaz nema prepisovat rychlost prekladu
-    raw = glossary_mod.collect_text(run, messages, track_speed=False)
+    # track_speed=False: kratky pomocny dotaz nema prepisovat rychlost prekladu.
+    # Prekladovy model, ne pomocny: jinak by se model na karte menil po kazde davce.
+    raw = glossary_mod.collect_text(run, messages, track_speed=False,
+                                    model=CFG["lm_studio"]["model"])
     if raw is None:                       # beh se zastavuje
         return
     proposals = {}
@@ -467,6 +480,10 @@ def _run_stream(run, messages, batch, refs):
                 if chars % 400 < len(payload):
                     # behem streamu je k dispozici jen odhad podle znaku
                     _tick(run, chars / 4.0, t_batch)
+            elif kind == "finish" and payload == "length":
+                # useknuta davka jinak vypada jako chyba formatu a opakuje se zbytecne
+                run.progress(message="odpověď narazila na limit max_tokens,"
+                                     " dávka je useknutá")
             elif kind == "usage":
                 batch_tokens = int(payload.get("completion_tokens") or 0)
     except llm.LLMError:
@@ -499,14 +516,15 @@ def _emit_draft(run, batch, refs, n, body):
     run.emit({"type": "draft", "ord": batch[idx]["ord"], "html": html})
 
 
-def _commit(con, run, batch, results, entries, partial=False):
+def _commit(con, run, batch, results, entries, partial=False, extra=None):
     """Zapis po davce. Kdyz se aplikace zavre, hotove segmenty zustanou.
 
     Pri partial=True se zapisou jen odstavce, ktere dobehly. Zbytek zustane
     pending, aby se pri navazani prelozil znovu a nic se neztratilo.
 
     Kazdy odstavec projde kontrolami. Kdyz nesedi, dostane stav 'review'
-    a duvod. Prekladat se nepreklada znovu a nic se neprepisuje.
+    a duvod. Prekladat se nepreklada znovu a nic se neprepisuje. V extra
+    muze prijit dalsi vyhrada k odstavci podle id, treba useknuta odpoved.
     """
     written = []      # (segment, html, text, status, poznamka)
     for i, seg in enumerate(batch, 1):
@@ -523,6 +541,7 @@ def _commit(con, run, batch, results, entries, partial=False):
             written.append((seg, html, text, "failed", None))
             continue
         problems = checks.inspect(seg, html, text, entries)
+        problems += (extra or {}).get(seg["id"], [])
         if problems:
             note = "; ".join(p["detail"] for p in problems)
             written.append((seg, html, text, "review", note))
@@ -546,3 +565,78 @@ def _commit(con, run, batch, results, entries, partial=False):
     for seg, html, text, status, note in written:
         run.emit({"type": "segment", "ord": seg["ord"], "status": status,
                   "html": html, "review_note": note})
+
+
+# ------------------------------------------------------ TranslateGemma
+
+def _translate_translategemma(run, con, book, pending, chapter, t0):
+    """Po odstavcich, s predchozimi prelozenymi odstavci jako kontextem.
+
+    Kontext se bere z databaze, ne z pameti behu, takze funguje i navazani po
+    preruseni a preklad jednoho odstavce znovu. Jmena se behem prekladu
+    nedoplnuji: dotaz na ne potrebuje model, ktery umi plnit ukoly, a vymena
+    modelu na karte po kazdem odstavci by beh zdrzela vic nez samotny preklad.
+    """
+    run.emit(dict(run.state, type="start", batches=len(pending)))
+    for i, seg in enumerate(pending, 1):
+        if run.should_stop():
+            return
+        kde = "kapitola " + str(seg["chapter"]) + ", " if chapter is None else ""
+        run.progress(message=kde + "odstavec " + str(i) + " / " + str(len(pending)))
+
+        history = _tg_history(con, seg)
+        entries = glossary_for(con, history + [seg])
+        refs = []
+        source = prompt.strip_refs(seg["src_html"], refs)
+        text = prompt.tg_prompt(
+            book, seg, source,
+            [(prompt.tg_context(h["src_html"]), prompt.tg_context(h["tgt_html"]))
+             for h in history],
+            entries)
+
+        html, finish, stopped = _tg_stream(run, text, seg, refs)
+        if stopped:
+            return                         # nedopsany odstavec zustane pending
+        extra = None
+        if finish == "length":
+            extra = {seg["id"]: [{"kind": "truncated",
+                                  "detail": "odpověď narazila na limit max_tokens,"
+                                            " překlad může být useknutý"}]}
+        _commit(con, run, [seg], {1: html}, glossary_for(con, [seg]), extra=extra)
+
+        elapsed = max(0.001, time.time() - t0)
+        run.progress(eta_s=int(elapsed / i * (len(pending) - i)))
+
+
+def _tg_history(con, seg):
+    """Nejblizsi predchozi prelozene odstavce z teze kapitoly, od nejstarsiho."""
+    rows = con.execute(
+        "SELECT ord, kind, src_text, src_html, tgt_html FROM segment"
+        " WHERE chapter = ? AND ord < ? AND status IN ('done', 'review')"
+        " AND tgt_html IS NOT NULL AND tgt_html != ''"
+        " ORDER BY ord DESC LIMIT ?",
+        (seg["chapter"], seg["ord"], prompt.TG_HISTORY)).fetchall()
+    return [dict(r) for r in reversed(rows)]
+
+
+def _tg_stream(run, text, seg, refs):
+    """Posle prompt jednoho odstavce. Vraci (html, duvod ukonceni, zastaveno)."""
+    chunks, tokens, finish = [], 0, None
+    t_seg = time.time()
+    for kind, payload in llm.stream_completion(text, run.should_stop, stop=prompt.TG_STOP):
+        if kind == "delta":
+            chunks.append(payload)
+        elif kind == "finish":
+            finish = payload
+        elif kind == "usage":
+            tokens = int(payload.get("completion_tokens") or 0)
+    if run.should_stop():
+        return "", finish, True
+    raw = "".join(chunks)
+    if not tokens:
+        tokens = int(len(raw) / 4)         # server pocet tokenu neposlal
+    run.state["tokens_out"] += tokens
+    _tick(run, tokens, t_seg)
+    html = prompt.restore_refs(prompt.sanitize(prompt.markdown_emphasis(raw)), refs)
+    run.emit({"type": "draft", "ord": seg["ord"], "html": html})
+    return html, finish, False

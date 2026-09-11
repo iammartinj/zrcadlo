@@ -196,3 +196,118 @@ def split_marked(text):
         if body:
             out[int(m.group(1))] = body
     return out
+
+
+# ------------------------------------------------------ TranslateGemma
+
+# TranslateGemma nema systemovou roli ani volny chat. Ucila se na jednom pevnem
+# zadani, ktere se tu sklada rucne a posila pres /v1/completions. Zneni sedi
+# znak po znaku s chatovou sablonou modelu. <bos> pridava server sam.
+TG_HEAD = ("<start_of_turn>user\nYou are a professional English (en) to Czech (cs) "
+           "translator. Your goal is to accurately convey the meaning and nuances of the "
+           "original English text while adhering to Czech grammar, vocabulary, and "
+           "cultural sensitivities.\n")
+TG_TAIL = ("Produce only the Czech translation, without any additional explanations or "
+           "commentary. Please translate the following English text into Czech:\n\n\n")
+TG_STOP = ("<end_of_turn>",)
+TG_HISTORY = 3
+
+TG_REGISTER = {
+    "neutralni": "neutral, standard literary Czech",
+    "hovorovy": "colloquial Czech close to spoken language",
+    "archaizujici": "slightly archaic Czech in the manner of older literature",
+}
+TG_NARRATOR = {
+    "muz": "The narrator is a man; use masculine forms for him in the past tense.",
+    "zena": "The narrator is a woman; use feminine forms for her in the past tense.",
+}
+TG_ADDRESS = {
+    "tykani": "The characters address each other informally (in Czech they use tykání).",
+    "vykani": "The characters address each other formally (in Czech they use vykání).",
+}
+TG_KIND = {
+    "head": "The text is a chapter or section heading; do not add a full stop.",
+    "quote": "The text is a quotation or an epigraph.",
+    "note": "The text is a footnote.",
+}
+TG_GENDER = {"m": "a man", "f": "a woman"}
+
+MD_STRONG_RE = re.compile(r"\*\*(?=\S)(.+?)(?<=\S)\*\*")
+MD_EM_RE = re.compile(r"(?<![*\w])\*(?=[^\s*])(.+?)(?<=[^\s*])\*(?![*\w])")
+
+
+def tg_turn(text, notes=""):
+    return TG_HEAD + notes + TG_TAIL + text.strip() + "<end_of_turn>\n"
+
+
+def tg_answer(text):
+    return "<start_of_turn>model\n" + text.strip() + "<end_of_turn>\n"
+
+
+def tg_context(html):
+    """Predchozi odstavec do kontextu, bez odkazu na poznamky pod carou."""
+    return NOTEREF_RE.sub("", SUP_NOTEREF_RE.sub("", html or "")).strip()
+
+
+def tg_notes(book, glossary=None, kind=None, refs=False):
+    """Stylova karta a postavy ze slovnicku jako jedna radka pokynu.
+
+    Na ukazce romanu model pokyn v tomhle tvaru poslechl a do prekladu ho
+    neopsal. Rod postav resi shodu, kterou model bez kontextu hada.
+    """
+    lines = ["Register: " + TG_REGISTER.get(book["style_register"],
+                                            TG_REGISTER["neutralni"]) + "."]
+    for mapping, key in ((TG_NARRATOR, "style_narrator"), (TG_ADDRESS, "style_address")):
+        line = mapping.get(book[key])
+        if line:
+            lines.append(line)
+    if book["feminize_surnames"]:
+        lines.append("Feminize women's surnames the Czech way (Smith → Smithová).")
+    else:
+        lines.append("Do not feminize women's surnames; keep them as in the original.")
+    for e in glossary or []:
+        who = TG_GENDER.get(e.get("gender") or "")
+        if e.get("category") == "osoba" and who:
+            lines.append(e["term_cs"] + " is " + who + ".")
+    lines += [
+        "Do not put \"pan\" or \"paní\" before a name unless the original has"
+        " Mr., Mrs., Ms. or Miss.",
+        "Keep units as in the original (feet stay feet, miles stay miles);"
+        " do not convert numbers.",
+        "Keep the <em> and <strong> tags from the source on the corresponding words.",
+    ]
+    if refs:
+        lines.append("Keep markers such as {{1}} unchanged at the corresponding place.")
+    hint = TG_KIND.get(kind)
+    if hint:
+        lines.append(hint)
+    note = (book["style_note"] or "").strip()
+    if note:
+        lines.append("Translator's note: " + note)
+    return "Notes: " + " ".join(lines) + "\n"
+
+
+def tg_prompt(book, seg, source, history=(), glossary=None):
+    """Cely prompt pro jeden odstavec.
+
+    Pojmy ze slovnicku a predchozi prelozene odstavce jdou jako drivejsi kola
+    rozhovoru ve formatu, na kterem se model ucil. Nemusi je poslouchat, jen
+    navazuje na to, co uz "sam" prelozil. Pokyn stoji jen v poslednim kole.
+
+    source je zdroj odstavce s odkazy uz nahrazenymi znackou {{n}},
+    history jsou dvojice (zdroj, preklad) od nejstarsiho.
+    """
+    parts = [tg_turn(e["term_src"]) + tg_answer(e["term_cs"]) for e in glossary or []]
+    parts += [tg_turn(src) + tg_answer(tgt) for src, tgt in history]
+    notes = tg_notes(book, glossary, seg["kind"], refs="{{" in source)
+    return "".join(parts) + tg_turn(source, notes) + "<start_of_turn>model\n"
+
+
+def markdown_emphasis(text):
+    """Hvezdickove zvyrazneni z Markdownu zpatky na <strong> a <em>.
+
+    TranslateGemma znacky ze zdroje nevraci jako HTML, ale jako *...*.
+    Zvyrazneni, ktere zdroj nema, pak stejne odstrani strip_added_markup.
+    """
+    text = MD_STRONG_RE.sub(r"<strong>\1</strong>", text)
+    return MD_EM_RE.sub(r"<em>\1</em>", text)

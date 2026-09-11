@@ -1,11 +1,13 @@
 """Rozhrani k LM Studiu pres HTTP. Vlastni inferencni vrstva se tu nepise.
 
-Adresa, jmeno modelu i parametry vzorkovani jsou v config.json.
+Adresa, jmeno modelu i parametry vzorkovani jsou v config.json. Model bez
+chatu (TranslateGemma) dostava hotovy text pres /v1/completions.
 """
 import json
 
 import httpx
 
+from . import config
 from .config import CFG
 
 
@@ -17,9 +19,11 @@ class LLMError(Exception):
 # tedy ven z pocitace. Spojeni musi zustat mistni.
 _CLIENT = httpx.Client(trust_env=False)
 
+SAMPLING = ("temperature", "top_p", "repeat_penalty", "seed", "max_tokens")
 
-def _url():
-    return CFG["lm_studio"]["base_url"].rstrip("/") + "/chat/completions"
+
+def _url(endpoint="chat/completions"):
+    return CFG["lm_studio"]["base_url"].rstrip("/") + "/" + endpoint
 
 
 def _timeout():
@@ -27,10 +31,20 @@ def _timeout():
                          write=30.0, pool=5.0)
 
 
-def _payload(messages, stream, with_repeat_penalty=True):
-    inf = CFG["inference"]
+def _params(model):
+    """Vzorkovani z "inference", prepsane nastavenim konkretniho modelu."""
+    inf = dict(CFG["inference"])
+    for key, value in config.profile(model).items():
+        if key in SAMPLING:
+            inf[key] = value
+    return inf
+
+
+def _payload(messages, stream, with_repeat_penalty=True, model=None):
+    model = model or CFG["lm_studio"]["model"]
+    inf = _params(model)
     body = {
-        "model": CFG["lm_studio"]["model"],
+        "model": model,
         "messages": messages,
         "temperature": inf["temperature"],
         "top_p": inf["top_p"],
@@ -43,6 +57,15 @@ def _payload(messages, stream, with_repeat_penalty=True):
         body["repeat_penalty"] = inf["repeat_penalty"]
     if stream:
         body["stream_options"] = {"include_usage": True}
+    return body
+
+
+def _completion_payload(prompt, stream, with_repeat_penalty=True, model=None, stop=None):
+    body = _payload([], stream, with_repeat_penalty, model)
+    del body["messages"]
+    body["prompt"] = prompt
+    if stop:
+        body["stop"] = list(stop)
     return body
 
 
@@ -59,15 +82,30 @@ def _explain(exc):
     return str(exc)
 
 
-def stream_chat(messages, should_stop=None):
+def stream_chat(messages, should_stop=None, model=None):
     """Posle dotaz a vraci kousky odpovedi, jak prichazeji.
 
-    Vydava dvojice ("delta", text) a nakonec ("usage", slovnik) s poctem tokenu,
-    pokud ho server posle. Kdyz should_stop() vrati True, spojeni se zavre.
+    Vydava dvojice ("delta", text), ("finish", duvod ukonceni) a nakonec
+    ("usage", slovnik) s poctem tokenu, pokud ho server posle. Kdyz
+    should_stop() vrati True, spojeni se zavre.
     """
+    yield from _stream(
+        lambda rp: ("chat/completions", _payload(messages, True, rp, model)),
+        should_stop)
+
+
+def stream_completion(prompt, should_stop=None, model=None, stop=None):
+    """Hotovy text bez chatove sablony. Vydava stejne dvojice jako stream_chat."""
+    yield from _stream(
+        lambda rp: ("completions", _completion_payload(prompt, True, rp, model, stop)),
+        should_stop)
+
+
+def _stream(build, should_stop):
     for attempt, with_rp in enumerate((True, False)):
+        endpoint, body = build(with_rp)
         try:
-            yield from _stream_once(messages, with_rp, should_stop)
+            yield from _stream_once(endpoint, body, should_stop)
             return
         except httpx.HTTPStatusError as exc:
             # nekterym serverum vadi repeat_penalty, zkusi se dotaz bez nej
@@ -80,9 +118,8 @@ def stream_chat(messages, should_stop=None):
             raise LLMError(_explain(exc))
 
 
-def _stream_once(messages, with_rp, should_stop):
-    with _CLIENT.stream("POST", _url(), json=_payload(messages, True, with_rp),
-                        timeout=_timeout()) as res:
+def _stream_once(endpoint, body, should_stop):
+    with _CLIENT.stream("POST", _url(endpoint), json=body, timeout=_timeout()) as res:
         if res.status_code != 200:
             res.read()
             res.raise_for_status()
@@ -99,9 +136,14 @@ def _stream_once(messages, with_rp, should_stop):
             except ValueError:
                 continue
             for choice in obj.get("choices") or []:
-                piece = (choice.get("delta") or {}).get("content")
+                # /completions posila "text", chat posila "delta.content"
+                piece = choice.get("text")
+                if piece is None:
+                    piece = (choice.get("delta") or {}).get("content")
                 if piece:
                     yield "delta", piece
+                if choice.get("finish_reason"):
+                    yield "finish", choice["finish_reason"]
             usage = obj.get("usage")
             if usage:
                 yield "usage", usage
