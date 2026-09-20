@@ -286,6 +286,17 @@ def api_cleanup_restore(slug: str):
     return result
 
 
+@app.post("/api/projects/{slug}/reset")
+def api_reset(slug: str):
+    """Zahodi preklad cele knihy. Slovnicek a vyrazene odstavce zustavaji."""
+    if runner.active(slug) is not None:
+        raise HTTPException(409, "Na projektu právě běží jiná práce.")
+    result = projects.reset_book(slug)
+    if result is None:
+        raise HTTPException(404, "Projekt nenalezen.")
+    return result
+
+
 @app.post("/api/projects/{slug}/segments/{ord}/retranslate")
 def api_segment_retranslate(slug: str, ord: int):
     """Jeden segment zpatky k prekladu. Pouziva se u stavu 'review'."""

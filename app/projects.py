@@ -372,6 +372,37 @@ def reset_segment(slug, ord_):
         con.close()
 
 
+PRELOZENE = ("done", "review", "failed")
+
+
+def reset_book(slug):
+    """Zahodi preklad cele knihy a vrati odstavce k prekladu.
+
+    Slovnicek ani stylova karta se nemeni, na sestaveni slovnicku je vlastni
+    tlacitko. Vyrazene odstavce zustavaji vyrazene. Puvodni stav zustane
+    v project.db.zaloha vedle projektu, dalsi reset zalohu prepise.
+    """
+    path = project_dir(slug)
+    if path is None:
+        return None
+    dbf = path / "project.db"
+    if not dbf.exists():
+        return None
+    zaloha = dbf.parent / (dbf.name + ".zaloha")
+    shutil.copy2(dbf, zaloha)
+    con = db.connect(dbf)
+    try:
+        otazniky = ",".join("?" * len(PRELOZENE))
+        cur = con.execute(
+            "UPDATE segment SET status = 'pending', tgt_text = NULL,"
+            " tgt_html = NULL, review_note = NULL, attempts = 0"
+            " WHERE status IN (" + otazniky + ")", PRELOZENE)
+        con.commit()
+        return {"reset": cur.rowcount, "backup": zaloha.name}
+    finally:
+        con.close()
+
+
 def segments(slug, chapter=None, offset=0, limit=0):
     con = open_db(slug)
     if con is None:

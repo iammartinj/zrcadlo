@@ -685,6 +685,7 @@ function nowLine() {
 
 function updateGo() {
   const go = $("go");
+  updateExportButtons();   // Nový překlad se řídí tím, jestli je co zahodit
   if (state.running && state.runKind === "glossary") {
     go.disabled = true;
     go.textContent = "SLOVNÍČEK SE SESTAVUJE";
@@ -1374,6 +1375,56 @@ function resumeNotice(book) {
   }
 }
 
+/* ---------------- novy preklad ---------------- */
+
+/* Zahodi hotovy preklad a vrati knihu na zacatek. Pta se stejnou listou
+   jako cisteni balastu, systemove okno by z aplikace ucinilo prohlizec. */
+function askReset() {
+  const book = state.book;
+  if (!book) return;
+  const kolik = (book.done || 0) + (book.review || 0) + (book.failed || 0);
+  const model = (state.status && state.status.model) || "nastaveným modelem";
+
+  const box = $("glossoffer");
+  box.innerHTML = "";
+  const text = document.createElement("div");
+  text.textContent = "Zahodím překlad " +
+    withNum(kolik, "odstavce", "odstavců", "odstavců") +
+    " a kniha půjde znovu modelem " + model + ". Slovníček zůstane, na jeho" +
+    " sestavení je vlastní tlačítko. Vyřazené odstavce zůstanou vyřazené.";
+  const row = document.createElement("div");
+  row.className = "row";
+  const yes = document.createElement("button");
+  yes.className = "yes";
+  yes.textContent = "Zahodit překlad";
+  yes.addEventListener("click", async () => {
+    yes.disabled = true;
+    try {
+      const res = await api("/api/projects/" + encodeURIComponent(state.slug) +
+                            "/reset", { method: "POST" });
+      box.classList.remove("on");
+      glossOpen(false);
+      notice("ok", "Kniha čeká na nový překlad, " +
+        withNum(res.reset, "odstavec", "odstavce", "odstavců") + " se zahodilo.",
+        "Poslední stav zůstal v souboru " + res.backup +
+        " ve složce projektu. Další zahození ho přepíše.");
+      await refreshBook();
+      await showChapter(1);
+      paint();
+    } catch (e) {
+      notice("bad", "Zahodit překlad se nepodařilo.", e.message);
+      yes.disabled = false;
+    }
+  });
+  const no = document.createElement("button");
+  no.textContent = "Nechat být";
+  no.addEventListener("click", () => { box.classList.remove("on"); glossOpen(false); });
+  row.append(yes, no);
+  box.append(text, row);
+  box.classList.add("on");
+  glossOpen(true);
+}
+
 /* ---------------- cisteni tiskoveho balastu ---------------- */
 
 async function runCleanup() {
@@ -1478,6 +1529,10 @@ function updateExportButtons() {
   const has = !!state.book;
   $("exp").disabled = !has;
   $("clean").disabled = !has;
+  // zahazovat je co, jen kdyz uz je neco prelozeno a nic zrovna nebezi
+  const prelozeno = has && ((state.book.done || 0) + (state.book.review || 0) +
+                            (state.book.failed || 0)) > 0;
+  $("reset").disabled = !prelozeno || state.running;
 }
 
 /* ---------------- nacteni knihy ---------------- */
@@ -1558,6 +1613,8 @@ function wire() {
   $("clean").addEventListener("click", runCleanup);
 
   $("exp").addEventListener("click", runExport);
+
+  $("reset").addEventListener("click", askReset);
 
   $("glossopen").addEventListener("click", () => glossOpen(true));
   $("glossclose").addEventListener("click", () => glossOpen(false));

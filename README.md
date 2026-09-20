@@ -120,6 +120,12 @@ stránky, kdežto označení mluvčího v dialogu nebo připsání citátu se op
 taky, ale uprostřed textu. Na jedné skutečné knize to našlo 969 odstavců z 3766
 a nespletlo se ani u jednoho.
 
+**Nebo začni znovu.** Tlačítko *Nový překlad* zahodí hotový překlad celé knihy
+a vrátí ji na začátek — hodí se, když přepneš model. Slovníček ani stylová karta
+se nemění, na sestavení slovníčku je vlastní tlačítko, a vyřazené odstavce
+zůstanou vyřazené. Poslední stav zůstane v `project.db.zaloha` ve složce
+projektu, další zahození ho přepíše.
+
 **Uprav, co ti vadí.** Klikni na kterýkoli odstavec v pravém sloupci a piš
 rovnou do něj. Kurzíva je Ctrl+I, tučné Ctrl+B, Enter uloží a Esc zruší.
 Tlačítka pod odstavcem umí ještě nechat ho přeložit znovu nebo ho vyřadit
