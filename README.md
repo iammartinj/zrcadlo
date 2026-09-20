@@ -203,6 +203,12 @@ převedou zpátky na kurzívu a tučné písmo.
 K revizi jde odstavec, ve kterém chybí výraz ze slovníčku, zůstala angličtina,
 model si domyslel text (překlad je nejméně třikrát delší než zdroj), nebo přidal
 „pan“ či „paní“ před jméno osoby ze slovníčku, ačkoli originál žádný titul nemá.
+Stejně dopadne odstavec, který se modelu vůbec nechtělo překládat a vrátil ho
+beze změny — typicky titulek verzálkami nebo krátká replika. Oddělovače,
+čísla a samotná jména se tím nezdržují.
+
+Uzavírací značku s escapovaným lomítkem (`<em>slovo<\/em>`, jak ji model zná
+z JSONu) aplikace narovná, aby kurzíva nepřetekla přes zbytek odstavce.
 
 U Gemmy 3 se nová vlastní jména, která se objeví až během překladu, průběžně
 doplňují do slovníčku a od dalšího výskytu se používají.

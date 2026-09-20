@@ -9,6 +9,7 @@ import unicodedata
 from bs4 import BeautifulSoup
 
 WORD_RE = re.compile(r"[^\W\d_]+", re.UNICODE)
+WS = re.compile(r"\s+")
 EMPHASIS = ("em", "strong")
 BLOCK = ("p", "div", "body", "html", "h1", "h2", "h3", "h4", "h5", "h6")
 
@@ -122,6 +123,21 @@ def english_residue(text, threshold=0.5, min_words=6):
     if count < min_words:
         return False, ratio
     return ratio < threshold, ratio
+
+
+def untranslated(src_text, tgt_text):
+    """Preklad je znak po znaku stejny jako zdroj a nejde o samou nečeštinu.
+
+    Na kratkych useku english_residue nerozhoduje, takze titulky verzalkami
+    ani '[ONE]' nezachyti. Shoda se zdrojem ale doklad nepotrebuje: staci,
+    ze ve zdroji je aspon jedno slovo, ktere cesky nevypada. Oddelovace
+    '• • •', holá čísla a jména jako 'Max Barry' tim padem projdou.
+    """
+    src, tgt = WS.sub(" ", src_text or "").strip(), WS.sub(" ", tgt_text or "").strip()
+    if not src or src != tgt:
+        return False
+    ratio, count = czech_ratio(src)
+    return count >= 1 and ratio < 1.0
 
 
 # ------------------------------------------------------------- slovnicek
@@ -325,6 +341,10 @@ def inspect(segment, tgt_html, tgt_text, entries):
     if tituly:
         problems.append({"kind": "honorific",
                          "detail": "„pan/paní“ navíc před " + ", ".join(tituly)})
+
+    if untranslated(segment["src_text"], tgt_text):
+        problems.append({"kind": "untranslated",
+                         "detail": "překlad je slovo od slova shodný se zdrojem"})
 
     suspicious, ratio = english_residue(tgt_text)
     if suspicious:

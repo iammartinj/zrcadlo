@@ -531,7 +531,8 @@ function paint() {
   const book = state.book;
   // vyrazene odstavce se neprekladaji, do jmenovatele tedy nepatri
   const total = book ? (book.total || 0) - (book.skipped || 0) : 0;
-  const done = book ? book.done : 0;
+  // odstavec k revizi je prelozeny, jen ceka na oko; do hotoveho patri
+  const done = book ? (book.done || 0) + (book.review || 0) : 0;
   const r = total ? done / total : 0;
   $("pct").textContent = Math.round(r * 100);
   $("cnt").textContent = total ? num(done) + " / " + num(total) : "—";
@@ -544,8 +545,10 @@ function paint() {
   });
   const vyrazeno = book && book.skipped
     ? " · " + num(book.skipped) + " vyřazeno" : "";
+  const kRevizi = book && book.review
+    ? " · " + num(book.review) + " ke kontrole" : "";
   $("cnt").textContent = total
-    ? num(done) + " / " + num(total) + vyrazeno : "—";
+    ? num(done) + " / " + num(total) + kRevizi + vyrazeno : "—";
   $("nowline").textContent = nowLine();
 }
 
@@ -554,9 +557,10 @@ function nowLine() {
   if (!book) return "připraveno";
   if (state.running) return state.live.note || "překládá se";
   const cil = (book.total || 0) - (book.skipped || 0);
-  if (book.done === 0) return "kniha načtena, překlad nespuštěn";
-  if (book.done >= cil) return "přeloženo celé";
-  return "hotovo " + num(book.done) + " odstavců";
+  const hotovo = (book.done || 0) + (book.review || 0);
+  if (hotovo === 0) return "kniha načtena, překlad nespuštěn";
+  if (hotovo >= cil) return "přeloženo celé";
+  return "hotovo " + num(hotovo) + " odstavců";
 }
 
 function updateGo() {

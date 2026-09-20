@@ -18,6 +18,10 @@ SUP_NOTEREF_RE = re.compile(
     r'<sup>\s*<a class="noteref" data-note="([^"]*)">(.*?)</a>\s*</sup>')
 NOTEREF_RE = re.compile(r'<a class="noteref" data-note="([^"]*)">(.*?)</a>')
 TOKEN_RE = re.compile(r"\{\{\s*(\d+)\s*\}\}")
+# Model obcas napise uzaviraci znacku s escapovanym lomitkem, jak to zna
+# z JSONu: <em>slovo<\/em>. Parser to nevezme jako znacku, nechal by ji
+# v textu a nepárovy <em> by pak kurzivou obalil zbytek odstavce.
+ESCAPED_CLOSE_RE = re.compile(r"<\\+/")
 
 REGISTER = {
     "neutralni": "neutrální, spisovný",
@@ -70,7 +74,7 @@ def restore_refs(text, refs):
 
 def sanitize(text):
     """Z odpovedi modelu nechá jen kurzívu a příbuzné značky, zbytek zahodí."""
-    soup = BeautifulSoup(text, "lxml")
+    soup = BeautifulSoup(ESCAPED_CLOSE_RE.sub("</", text), "lxml")
     node = soup.body or soup
     return epubin._inline_html(node, []).strip()
 
