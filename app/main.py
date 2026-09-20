@@ -8,7 +8,8 @@ import tempfile
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse,
+                               StreamingResponse)
 from fastapi.staticfiles import StaticFiles
 
 from . import cleanup, export, glossary, projects, runner, sysinfo, translate
@@ -20,9 +21,34 @@ STATIC = ROOT / "static"
 app = FastAPI(title="Zrcadlo", docs_url=None, redoc_url=None)
 
 
+# Bez tohoto hlavicky si okno aplikace drzi app.js a style.css z cache podle
+# vlastniho odhadu a nova verze se neprojevi ani po restartu. 'no-cache'
+# neznamena neukladat, ale pokazde se zeptat: kdyz se soubor nezmenil,
+# prijde prazdna odpoved 304.
+FRESH = {"Cache-Control": "no-cache"}
+VERSIONED = ("app.js", "style.css")
+
+
+class FreshStatic(StaticFiles):
+    """Staticke soubory, ktere se pokazde overi proti disku."""
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
+def asset_version():
+    """Cas posledni zmeny skriptu a stylu. Kdyz se zmeni, zmeni se adresa."""
+    times = [(STATIC / name).stat().st_mtime for name in VERSIONED]
+    return str(int(max(times)))
+
+
 @app.get("/")
 def index():
-    return FileResponse(STATIC / "index.html")
+    """Adresa skriptu a stylu nese cas zmeny, at okno nesahne po stare kopii."""
+    html = (STATIC / "index.html").read_text(encoding="utf-8")
+    return HTMLResponse(html.replace("__V__", asset_version()), headers=FRESH)
 
 
 @app.get("/api/status")
@@ -327,8 +353,9 @@ def api_glossary_lock_all(slug: str):
 
 
 @app.get("/api/projects/{slug}/glossary/{entry_id}/affected")
-def api_glossary_affected(slug: str, entry_id: int):
-    found = glossary.affected_segments(slug, entry_id)
+def api_glossary_affected(slug: str, entry_id: int, only_done: bool = True):
+    """only_done=false vrati i odstavce, ktere jeste nejsou prelozene."""
+    found = glossary.affected_segments(slug, entry_id, only_done=only_done)
     if found is None:
         raise HTTPException(404, "Položka slovníčku nenalezena.")
     return found
@@ -349,4 +376,4 @@ def http_error(request, exc):
     return JSONResponse({"error": exc.detail}, status_code=exc.status_code)
 
 
-app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
+app.mount("/static", FreshStatic(directory=str(STATIC)), name="static")

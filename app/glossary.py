@@ -528,11 +528,12 @@ def lock_all(slug):
         con.close()
 
 
-def affected_segments(slug, entry_id):
-    """Hotove segmenty, ve kterych zdrojovy vyraz stoji.
+def affected_segments(slug, entry_id, only_done=True):
+    """Segmenty, ve kterych zdrojovy vyraz stoji.
 
-    Pouziva se, kdyz uzivatel zmeni potvrzenou polozku: ty segmenty uz jsou
-    prelozene se starym tvarem.
+    only_done=True bere jen hotove: pouziva se, kdyz uzivatel zmeni
+    potvrzenou polozku a dotcene odstavce se maji prelozit znovu. Pro
+    prohlizeni vyskytu v knize se hodi cely seznam, tam je only_done=False.
     """
     con = projects.open_db(slug)
     if con is None:
@@ -543,10 +544,13 @@ def affected_segments(slug, entry_id):
         if row is None:
             return None
         term = row["term_src"]
+        sql = "SELECT id, ord, chapter, src_text FROM segment"
+        if only_done:
+            sql += " WHERE status = 'done'"
+        else:
+            sql += " WHERE status != 'skipped'"
         hits = []
-        for seg in con.execute(
-                "SELECT id, ord, chapter, src_text FROM segment"
-                " WHERE status = 'done' ORDER BY ord"):
+        for seg in con.execute(sql + " ORDER BY ord"):
             count, _, _ = scan_term(term, seg["src_text"])
             if count:
                 hits.append({"id": seg["id"], "ord": seg["ord"],

@@ -101,6 +101,13 @@ body{
   cursor:pointer;padding:2px 4px;border-radius:2px;
 }
 .pager button:hover{color:var(--ink)}
+.pager select{
+  font:inherit;font-size:10px;letter-spacing:.06em;color:var(--muted);
+  width:auto;max-width:22ch;background:none;border:none;border-radius:2px;
+  padding:2px 4px;cursor:pointer;
+}
+.pager select:hover{color:var(--ink)}
+.pager select[disabled]{opacity:.4;cursor:default}
 
 /* ---------- console ---------- */
 .console{
@@ -138,6 +145,7 @@ select:hover{border-color:var(--muted)}
 /* ---------- the spine ---------- */
 .spine-block{flex:1;display:flex;gap:16px;padding:20px;min-height:0;border-bottom:1px solid var(--rule)}
 .rail{width:11px;flex:none;display:flex;flex-direction:column;gap:2px;padding-top:2px}
+.rail.live{cursor:pointer}
 .tick{flex:1;background:var(--rule);border-radius:1px;transition:background .35s ease}
 .tick.done{background:var(--accent)}
 .tick.now{background:var(--accent);animation:pulse 1.1s ease-in-out infinite}
@@ -243,6 +251,10 @@ select:hover{border-color:var(--muted)}
   vertical-align:super;padding:0 1px;
 }
 .reader p.hl{background:var(--accent-soft)}
+.reader mark.hit{
+  background:var(--accent-soft);color:var(--accent-ink);font-weight:500;
+  padding:1px 2px;border-radius:2px;box-shadow:inset 0 -1px 0 var(--accent);
+}
 .reader p[data-status="review"]{
   box-shadow:inset 1px 0 0 #B4832F;padding-left:12px;cursor:pointer;
 }
@@ -399,6 +411,13 @@ dialog.card select{background:var(--paper)}
 .gloss-table tr.gr:hover td{background:var(--paper)}
 .gloss-table tr.gr.locked td:first-child{box-shadow:inset 2px 0 0 var(--accent)}
 .gr-src{font-weight:500;word-break:break-word;max-width:15ch}
+.gr-term{
+  font:inherit;font-weight:inherit;text-align:left;word-break:break-word;
+  background:none;border:none;color:var(--ink);cursor:pointer;
+  padding:3px 4px;margin:-3px -4px;border-radius:2px;
+}
+.gr-term:hover{color:var(--accent);background:var(--accent-soft)}
+.gr-term[disabled]{opacity:.5;cursor:default}
 .gr-cs[contenteditable]{
   display:block;min-width:9ch;padding:3px 4px;border-radius:2px;
   border:1px solid transparent;color:var(--accent-ink);
@@ -414,6 +433,13 @@ dialog.card select{background:var(--paper)}
 }
 .gloss-table select:hover{border-color:var(--rule);background:var(--paper)}
 .gr-count{color:var(--muted);font-variant-numeric:tabular-nums}
+.gr-jump{
+  font:inherit;font-size:inherit;font-variant-numeric:tabular-nums;
+  background:none;border:none;color:var(--muted);cursor:pointer;
+  padding:2px 4px;border-radius:2px;
+}
+.gr-jump:hover{color:var(--accent);background:var(--accent-soft)}
+.gr-jump[disabled]{opacity:.5;cursor:default}
 .gr-lock{
   font:inherit;font-size:12px;line-height:1;background:none;border:none;
   cursor:pointer;color:var(--rule);padding:2px 4px;border-radius:2px;

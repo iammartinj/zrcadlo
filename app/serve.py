@@ -63,6 +63,9 @@ def main():
         print("Server se nepodařilo nastartovat na " + url)
         return 1
     print("Zrcadlo běží na " + url)
+    # Pokazde jina adresa: okno tak nemuze sahnout po strance z cache.
+    # Skript a styl uz si cas zmeny nesou samy, tohle je kvuli strance.
+    url += "?v=" + str(int(time.time()))
 
     try:
         import webview

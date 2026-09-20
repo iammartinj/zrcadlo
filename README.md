@@ -82,7 +82,13 @@ počítej s hodinou a půl. Slovníček sestavuje vždy *pomocný model* (viz
 Slovníček se pak vkládá do promptu, ale jen ty položky, jejichž výraz se
 v překládaném textu opravdu vyskytuje. Díky tomu se jména drží stejná napříč
 celou knihou. V panelu jde každou položku opravit, přepnout jí kategorii nebo
-rod, vyřadit ji, nebo ji zamknout. Zamčenou položku model při novém sestavování
+rod, vyřadit ji, nebo ji zamknout. Klik na anglický výraz (nebo na číslo výskytů
+na konci řádku) skočí na první výskyt v knize a podbarví samo slovo v obou
+sloupcích, další klik posune na další. V překladu se hledá i ve skloňovaných
+tvarech; když tam slovo není — protože ho model přeložil jinak, než říká
+slovníček — podbarví se celý odstavec, ať je vidět, kam jsme skočili. Bere
+i odstavce, které ještě nejsou přeložené, v levém sloupci je originál vidět
+tak jako tak. Zamčenou položku model při novém sestavování
 nepřepíše. U osob stojí za to vyplnit rod: TranslateGemma podle něj drží shodu
 v minulém čase.
 
@@ -93,6 +99,11 @@ Všechno jde do pokynu pro model.
 **Přelož.** Tlačítko PŘELOŽIT KNIHU projede celou knihu od místa, kde se
 skončilo. Zastavit se dá kdykoli — hotové odstavce zůstanou uložené a příště
 naváže tam, kde přestal. Průběh vidíš v obou sloupcích a na svislém ukazateli.
+
+**Pohybuj se po knize.** Šipky v patičce levého sloupce listují po kapitolách,
+klávesy ← → dělají totéž. Na delší skok je vedle nich seznam všech kapitol
+i s názvy. Klik na svislý ukazatel vlevo skočí na kapitolu, která na tom místě
+knihy běží.
 
 **Zkontroluj podezřelé odstavce.** Odstavec, který neprošel kontrolou, má
 v pravém sloupci tenkou svislou linku. Po kliknutí uvidíš důvod a můžeš ho nechat

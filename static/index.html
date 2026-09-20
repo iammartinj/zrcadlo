@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Zrcadlo</title>
 <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/style.css?v=__V__">
 </head>
 <body>
 <div class="app">
@@ -36,6 +36,7 @@
       <div class="pane-foot">
         <span id="srcfoot">—</span>
         <div class="pager">
+          <select id="chapsel" aria-label="Skočit na kapitolu" disabled></select>
           <button id="prev" aria-label="Předchozí kapitola" disabled>←</button>
           <button id="next" aria-label="Další kapitola" disabled>→</button>
         </div>
@@ -210,6 +211,6 @@
     </div>
   </form>
 </dialog>
-<script src="/static/app.js"></script>
+<script src="/static/app.js?v=__V__"></script>
 </body>
 </html>

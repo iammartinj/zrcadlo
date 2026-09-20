@@ -15,6 +15,7 @@ const state = {
   stream: null,
   live: { tps: null, eta: null, note: "" },
   glossary: [],
+  hits: {},          // id polozky slovnicku -> nalezene odstavce a kde v nich stojime
 };
 
 const CATEGORIES = [["osoba", "osoba"], ["misto", "místo"],
@@ -200,6 +201,7 @@ async function openProject(slug) {
   state.slug = slug;
   state.book = book;
   state.chapter = 1;
+  state.hits = {};
 
   $("fname").textContent = book.title;
   $("drop").classList.remove("file--empty");
@@ -212,6 +214,7 @@ async function openProject(slug) {
   resumeNotice(book);
 
   buildRail(book.total, book.chapters);
+  fillChapters(book.chapters);
   markCurrent();
   updateExportButtons();
   $("histopen").disabled = false;
@@ -240,7 +243,21 @@ async function refreshBook() {
 
 /* ---------------- kapitoly ---------------- */
 
-async function showChapter(n) {
+/* Seznam kapitol v paticce. Skok na dvacatou kapitolu jinak znamena
+   dvacet kliknuti na sipku. */
+function fillChapters(chapters) {
+  const sel = $("chapsel");
+  sel.innerHTML = "";
+  chapters.forEach((c, i) => {
+    const o = document.createElement("option");
+    o.value = String(i + 1);
+    o.textContent = (i + 1) + " · " + (c.title || "bez názvu");
+    sel.appendChild(o);
+  });
+  sel.disabled = chapters.length < 2;
+}
+
+async function showChapter(n, focusOrd, term) {
   const book = state.book;
   if (!book || !book.chapters.length) return;
   state.chapter = Math.min(Math.max(1, n), book.chapters.length);
@@ -249,7 +266,90 @@ async function showChapter(n) {
                          "/segments?chapter=" + state.chapter);
   state.segments = data.segments;
   renderChapter(chap, state.segments);
+  if (focusOrd) focusParagraph(focusOrd, term);
   updateGo();
+}
+
+/* Odscrolluje na odstavec a zvýrazní v něm hledané slovo. Když se slovo
+   najít nedá — v překladu se skloňuje jinak, než čekáme — podbarví se celý
+   odstavec, at je aspoň vidět, kam jsme skočili. Druhý sloupec dojede sám
+   po svázaném scrollování. */
+function focusParagraph(ord, term) {
+  const src = $("src");
+  clearMarks();
+  const targets = [...document.querySelectorAll('.reader p[data-ord="' + ord + '"]')];
+  if (!targets.length) return;
+  targets.forEach((p) => {
+    const slovo = term && (p.closest(".pane--src") ? term.src : term.cs);
+    if (!slovo || !markTerm(p, slovo)) p.classList.add("hl");
+  });
+  // oba sloupce na stejny odstavec; svazane scrollovani pak uz jen dorovnava
+  const dojed = () => targets.forEach((p) => p.scrollIntoView({ block: "center" }));
+  dojed();
+  requestAnimationFrame(dojed);
+}
+
+/* Nejdriv presne, a az kdyz to nenajde, na kmen: Adam -> Adamovi,
+   Akademie -> Akademii. Volnejsi hledani jde az napodruhé, at se u vyrazu,
+   ktery v odstavci stoji jak má, nepodbarvi nic jineho. */
+function markTerm(p, slovo) {
+  return markIn(p, termPattern(slovo, false)) || markIn(p, termPattern(slovo, true));
+}
+
+/* Vyraz jako cele slovo. U ohebne varianty se z posledniho slova ukroji
+   koncovka a misto ni se pripusti nanejvys ctyri pismena — tolik ceska
+   koncovka zabere. Delsi konec uz je jine slovo: Ada- ano u Adamovi,
+   ne u Adaptace. */
+function termPattern(text, ohebny) {
+  const slova = text.trim().split(/\s+/);
+  const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const posledni = slova.pop();
+  let kmen = posledni;
+  if (posledni.length >= 6) kmen = posledni.slice(0, -2);
+  else if (posledni.length >= 4) kmen = posledni.slice(0, -1);
+  const konec = ohebny && kmen.length < posledni.length
+              ? esc(kmen) + "[\\p{L}]{0,4}" : esc(posledni);
+  const cely = slova.map(esc).concat(konec).join("\\s+");
+  return new RegExp("(?<![\\p{L}\\p{N}])" + cely + "(?![\\p{L}\\p{N}])", "giu");
+}
+
+/* Obalí nalezená slova značkou <mark>. Jde po textových uzlech, aby se
+   nesáhlo na kurzívu ani na odkaz na poznámku. Vrací počet nálezů. */
+function markIn(p, re) {
+  const uzly = [];
+  const walker = document.createTreeWalker(p, NodeFilter.SHOW_TEXT);
+  while (walker.nextNode()) uzly.push(walker.currentNode);
+  let nalezu = 0;
+  uzly.forEach((uzel) => {
+    const text = uzel.nodeValue;
+    re.lastIndex = 0;
+    if (!re.test(text)) return;
+    re.lastIndex = 0;
+    const kousky = document.createDocumentFragment();
+    let konec = 0, m;
+    while ((m = re.exec(text)) !== null) {
+      kousky.appendChild(document.createTextNode(text.slice(konec, m.index)));
+      const znacka = document.createElement("mark");
+      znacka.className = "hit";
+      znacka.textContent = m[0];
+      kousky.appendChild(znacka);
+      konec = m.index + m[0].length;
+      nalezu++;
+      if (m[0] === "") re.lastIndex++;
+    }
+    kousky.appendChild(document.createTextNode(text.slice(konec)));
+    uzel.parentNode.replaceChild(kousky, uzel);
+  });
+  return nalezu;
+}
+
+function clearMarks() {
+  [...document.querySelectorAll(".reader mark.hit")].forEach((znacka) => {
+    const rodic = znacka.parentNode;
+    rodic.replaceChild(document.createTextNode(znacka.textContent), znacka);
+    rodic.normalize();
+  });
+  [...document.querySelectorAll(".reader p.hl")].forEach((p) => p.classList.remove("hl"));
 }
 
 function paraClass(seg) {
@@ -312,6 +412,7 @@ function renderChapter(chap, segs) {
   const total = state.book.chapters.length;
   $("srcmeta").textContent = chap.title;
   $("srcfoot").textContent = "kapitola " + state.chapter + " / " + total;
+  $("chapsel").value = String(state.chapter);
   $("prev").disabled = state.chapter <= 1;
   $("next").disabled = state.chapter >= total;
   paintChapterFoot();
@@ -321,6 +422,7 @@ function renderChapter(chap, segs) {
    pod ním se objeví jen tlačítka. Kurzíva a tučné fungují přes Ctrl+I a Ctrl+B,
    jak je člověk zvyklý; do HTML se to převede při ukládání. */
 function segmentAction(paragraph, seg) {
+  clearMarks();          // do editoru zvyrazneni slova nepatri
   // rozdelany editor u jineho odstavce se zavre, upravy v nem se zahodi
   const existing = $("tgt").querySelector(".seg-action");
   if (existing) {
@@ -525,6 +627,24 @@ function buildRail(total, chapters) {
     rail.appendChild(d);
   }
   ticks = [...rail.children];
+  rail.classList.toggle("live", total > 0);
+  rail.title = total > 0 ? "Klikni a skoč na kapitolu" : "";
+}
+
+/* Misto na ukazateli -> kapitola, ktera tam bezi. Ukazatel je vedeny jako
+   ozdoba (aria-hidden), pristupna cesta na kapitolu je seznam v paticce. */
+function railChapter(ev) {
+  const book = state.book;
+  if (!book || !book.total || !book.chapters.length) return null;
+  const box = $("rail").getBoundingClientRect();
+  if (!box.height) return null;
+  const podil = Math.min(0.999, Math.max(0, (ev.clientY - box.top) / box.height));
+  const ord = podil * book.total + 1;
+  let n = 1;
+  book.chapters.forEach((c, i) => {
+    if (c.first_ord && c.first_ord <= ord) n = i + 1;
+  });
+  return n;
 }
 
 function paint() {
@@ -845,6 +965,46 @@ function renderGlossary() {
   body.appendChild(table);
 }
 
+/* Skok na výskyt výrazu v knize. Opakovaný klik na stejnou položku jede
+   na další výskyt a po posledním se vrátí na začátek. Bere i odstavce,
+   které ještě nejsou přeložené — v levém sloupci je originál vidět. */
+function hintTitle(row, text) {
+  const term = row.querySelector(".gr-term"), cnt = row.querySelector(".gr-jump");
+  if (term) term.title = text;
+  if (cnt) cnt.title = text;
+}
+
+async function jumpToTerm(entry, row) {
+  const btn = row.querySelector(".gr-term");
+  let found = state.hits[entry.id];
+  if (!found) {
+    btn.disabled = true;
+    try {
+      const res = await api("/api/projects/" + encodeURIComponent(state.slug) +
+                            "/glossary/" + entry.id + "/affected?only_done=false");
+      found = { segments: res.segments, at: -1 };
+      state.hits[entry.id] = found;
+    } catch (e) {
+      notice("warn", "Výskyty se nenačetly.", e.message);
+      return;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+  if (!found.segments.length) {
+    notice("warn", "Výraz " + entry.term_src + " v knize není.",
+           "Počet výskytů pochází ze sestavování slovníčku.");
+    return;
+  }
+  found.at = (found.at + 1) % found.segments.length;
+  const seg = found.segments[found.at];
+  hintTitle(row, "výskyt " + (found.at + 1) + " / " + found.segments.length +
+                 " · klikni na další");
+  const slovo = { src: entry.term_src, cs: entry.term_cs || entry.term_src };
+  if (seg.chapter === state.chapter) focusParagraph(seg.ord, slovo);
+  else await showChapter(seg.chapter, seg.ord, slovo);
+}
+
 function glossRow(entry) {
   const tr = document.createElement("tr");
   tr.className = "gr" + (entry.locked ? " locked" : "");
@@ -852,8 +1012,11 @@ function glossRow(entry) {
 
   const src = document.createElement("td");
   src.className = "gr-src";
-  src.textContent = entry.term_src;
-  src.title = "první výskyt v kapitole " + (entry.first_chapter || "?");
+  const term = document.createElement("button");
+  term.className = "gr-term";
+  term.textContent = entry.term_src;
+  term.addEventListener("click", () => jumpToTerm(entry, tr));
+  src.appendChild(term);
 
   const cs = document.createElement("td");
   const csEdit = document.createElement("div");
@@ -882,7 +1045,11 @@ function glossRow(entry) {
 
   const cnt = document.createElement("td");
   cnt.className = "num gr-count";
-  cnt.textContent = entry.occurrences;
+  const jumpBtn = document.createElement("button");
+  jumpBtn.className = "gr-jump";
+  jumpBtn.textContent = entry.occurrences;
+  jumpBtn.addEventListener("click", () => jumpToTerm(entry, tr));
+  cnt.appendChild(jumpBtn);
 
   const lock = document.createElement("td");
   const lockBtn = document.createElement("button");
@@ -901,6 +1068,9 @@ function glossRow(entry) {
   del.appendChild(delBtn);
 
   tr.append(src, cs, cat, gen, cnt, lock, del);
+  hintTitle(tr, "Klikni a ukážu výskyt v knize, další klik posune na další." +
+                (entry.first_chapter ? " První je v kapitole " +
+                                       entry.first_chapter + "." : ""));
   return tr;
 }
 
@@ -1364,6 +1534,11 @@ function wire() {
 
   $("prev").addEventListener("click", () => showChapter(state.chapter - 1));
   $("next").addEventListener("click", () => showChapter(state.chapter + 1));
+  $("chapsel").addEventListener("change", (e) => showChapter(Number(e.target.value)));
+  $("rail").addEventListener("click", (e) => {
+    const n = railChapter(e);
+    if (n && n !== state.chapter) showChapter(n);
+  });
   document.addEventListener("keydown", (e) => {
     if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
     if (e.key === "ArrowLeft" && !$("prev").disabled) showChapter(state.chapter - 1);
