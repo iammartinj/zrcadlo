@@ -114,8 +114,9 @@ body{
   border-left:1px solid var(--rule);border-right:1px solid var(--rule);
   background:var(--paper);
   display:flex;flex-direction:column;min-height:0;
+  overflow-y:auto;scrollbar-width:thin;
 }
-.block{padding:18px 20px;border-bottom:1px solid var(--rule)}
+.block{padding:18px 20px;border-bottom:1px solid var(--rule);flex:none}
 .label{
   font-size:10px;letter-spacing:.2em;color:var(--muted);
   display:block;margin-bottom:10px;
@@ -143,7 +144,12 @@ select:hover{border-color:var(--muted)}
 .swap:hover{color:var(--accent)}
 
 /* ---------- the spine ---------- */
-.spine-block{flex:1;display:flex;gap:16px;padding:20px;min-height:0;border-bottom:1px solid var(--rule)}
+/* na nizkem okne se sloupec radeji odscrolluje, nez aby si bloky lezly
+   do textu: ukazatel si drzi svou vysku a tlacitka se nesmrsknou */
+.spine-block{
+  flex:1 0 auto;display:flex;gap:16px;padding:20px;min-height:150px;
+  border-bottom:1px solid var(--rule);
+}
 .rail{width:11px;flex:none;display:flex;flex-direction:column;gap:2px;padding-top:2px}
 .rail.live{cursor:pointer}
 .tick{flex:1;background:var(--rule);border-radius:1px;transition:background .35s ease}
@@ -159,7 +165,7 @@ select:hover{border-color:var(--muted)}
 .stats b{font-weight:500;color:var(--ink)}
 .now-line{font-size:10px;color:var(--accent);letter-spacing:.06em}
 
-.actions{padding:18px 20px;display:grid;gap:8px}
+.actions{padding:18px 20px;display:grid;gap:8px;flex:none}
 .btn{
   font:inherit;font-size:12px;font-weight:500;letter-spacing:.14em;
   padding:12px;border-radius:2px;cursor:pointer;border:1px solid var(--accent);
