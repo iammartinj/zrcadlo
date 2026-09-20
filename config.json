@@ -5,7 +5,7 @@
   },
   "lm_studio": {
     "base_url": "http://127.0.0.1:1234/v1",
-    "model": "gemma-3-12b-it-qat",
+    "model": "translategemma-12b-it",
     "helper_model": "gemma-3-12b-it-qat",
     "context": 8192,
     "timeout_s": 900
